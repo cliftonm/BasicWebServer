@@ -1,0 +1,678 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>Writing a Basic Web Server</title>
+</head>
+
+<body>
+
+<p>Writing a Basic Web Server</p>
+<h2>Introduction</h2>
+<p>Mainly for the fun of it, I decided to look into what's involved in writing 
+my own web server.&nbsp; I quickly became enthralled with the idea and the 
+fascinating things I was discovering about browsers, compliance with browser 
+expectations in the responses, and the sheer pleasure of writing a lean and mean 
+web server.&nbsp; So, this article (as requested a few weeks ago by several 
+people) describes the process.&nbsp; At this point, the implementation supports:</p>
+<ul>
+	<li>Routing</li>
+	<li>Session Manager</li>
+	<li>Authorization</li>
+	<li>Expired Sessions</li>
+</ul>
+<p>Because the web server is so lightweight, I found it completely unnecessary 
+to do anything complicated like implementing plug-ins for the actual 
+application.&nbsp; There's three core files:</p>
+<ul>
+	<li>Listener.cs - Listens and responds to connections using HttpListener</li>
+	<li>Router.cs - Manages routing</li>
+	<li>SessionManager.cs - Manages connection sessions state</li>
+</ul>
+<h3>A Soapbox Moment (or several)</h3>
+<p>I think it's important to state what this web server <i>is not.</i>&nbsp; 
+What you won't find (and you may disagree with my severe criticisms, but this 
+what I've learned over the last few years of web development):</p>
+<ul>
+	<li>Anything ORM.&nbsp; ORM should absolutely never be part of a web server</li>
+	<li>Anything MVC.&nbsp; The whole MVC concept for web apps is a useless 
+	architecture designed to make Ruby on Rails developers comfortable with 
+	Microsoft technologies.&nbsp; Totally useless and unnecessary.</li>
+	<li>No runtime compilation of web pages or custom syntaxes for parsing 
+	&quot;enhanced&quot; HTML files.&nbsp; Given modern jQuery-based controls like 
+	jqwidgets and employing JSON and AJAX, the need for turning an HTML file 
+	into something imperative by embedding C# (or other language) elements, 
+	well, that just isn't necessary.&nbsp; It:<ul>
+		<li>slows down serving the page</li>
+		<li>smears the logic that determines view state into the view where 
+		usually shouldn't belong</li>
+		<li>and if it's necessary to write a complex rendering, this is better 
+		done in a decent fluid-like architecture rather than syntaxes that 
+		further obfuscate the already arcane syntax of HTML and CSS.</li>
+	</ul>
+	</li>
+	<li>Attributes - I've said it since I started working with C#: attributes 
+	are great for giving a serializer hints for how to serialize fields or 
+	properties, other than that, they mostly promote bad design -- design which 
+	would be much better served with good object oriented design.&nbsp; For 
+	example, my routes are implemented by a <code>Route</code> base class and 
+	<code>AuthenticatedRoute</code> child class.&nbsp; If you want role-based authentication, 
+	it becomes a derived class rather than an attribute that decorates often 
+	empty controller functions and that requires hoops to go through to 
+	implement something different than what the framework designers decided 
+	would be the right implementation.&nbsp; Throw that all away, because it 
+	never works the way you want it, and it adds more performance bloat 
+	constantly using reflection to check &quot;oh, am I authorized&quot;, &quot;oh, do I have 
+	the right role for this?&quot;&nbsp; Again, another example of horrid design.</li>
+	<li>No IIS.&nbsp; More unnecessary bloat and configuration complexity that 
+	isn't needed.</li>
+</ul>
+<p>The ironic thing (and this is the last I'll say of it while standing on my 
+soapbox) is that, having implemented my own web server, I've come to realize how 
+much technologies like MVC Razor and Ruby on Rails (to pick two) <i>get in the 
+way </i>of the business of serving web pages and giving the programmer control 
+over how to render non-static content.&nbsp; With a simple web server, I find 
+myself focusing much more on the client-side JavaScript, HTML, and components, 
+where the only attention I have to pay to the server-side process is the PUT 
+handlers and the occasional AJAX request.&nbsp; The baggage created by MVC, 
+arcane routing syntaxes, attributes decorating unnecessary controller 
+functions--well, the whole state of affairs of writing a web application is 
+rather dismal, in my opinion.</p>
+<h3>About the Source Code Repository</h3>
+<p>The source code is hosted on GitHub:</p>
+<pre>git clone <a href="https://github.com/cliftonm/BasicWebServer.git">https://github.com/cliftonm/BasicWebServer.git</a></pre>
+<h2>Step 1 - HttpListener</h2>
+<p>The first step of process is to get an <code>HttpListener</code> class working.&nbsp; 
+I opted to go this route rather than the lower level socket route because 
+<code>HttpListener</code> provides a lot of useful services, such as decoding the HTML 
+request.&nbsp; I've read that it's not as performant as going the socket route, 
+but I'm not overly concerned with a little performance reduction.</p>
+<p>The web server is implemented as a library.&nbsp; There is a console application 
+for the specific web application executable.&nbsp; For this first step, the web 
+server needs:</p>
+<pre>using System.Net;
+using System.Net.Sockets;
+using System.Threading;</pre>
+<p>Because a web server is primarily stateless (except for session objects) most 
+of behaviors can be implemented as static singletons.&nbsp; </p>
+<pre>namespace Clifton.WebServer
+{
+  /// &lt;summary&gt;
+  /// A lean and mean web server.
+  /// &lt;/summary&gt;
+  public static class Server
+  {
+    private static HttpListener listener;
+    ...</pre>
+<p>We're going to make 
+the initial assumption that we're connecting to the server on an intranet, so we 
+obtain the IP's of our local host:</p>
+<pre>/// &lt;summary&gt;
+/// Returns list of IP addresses assigned to localhost network devices, such as hardwired ethernet, wireless, etc.
+/// &lt;/summary&gt;
+private static List&lt;IPAddress&gt; GetLocalHostIPs()
+{
+  IPHostEntry host;
+  host = Dns.GetHostEntry(Dns.GetHostName());
+  List&lt;IPAddress&gt; ret = host.AddressList.Where(ip =&gt; ip.AddressFamily == AddressFamily.InterNetwork).ToList();
+
+  return ret;
+}</pre>
+<p>We then instantiate the HttpListener and add the localhost prefixes:</p>
+<pre>private static HttpListener InitializeListener(List&lt;IPAddress&gt; localhostIPs)
+{
+  HttpListener listener = new HttpListener();
+  listener.Prefixes.Add(&quot;http://localhost/&quot;);
+
+  // Listen to IP address as well.
+  localhostIPs.ForEach(ip =&gt;
+  {
+    Console.WriteLine(&quot;Listening on IP &quot; + &quot;http://&quot; + ip.ToString() + &quot;/&quot;);
+    listener.Prefixes.Add(&quot;http://&quot; + ip.ToString() + &quot;/&quot;);
+  });
+
+  return listener;
+}</pre>
+<p>You will probably have more than one localhost IP.&nbsp; For example, my 
+laptop has an IP for both the ethernet and wireless &quot;ports.&quot;</p>
+<p>Borrowing a concept from Sacha's
+<a href="http://www.codeproject.com/Articles/826383/REST-A-Simple-REST-framework?msg=4969159#xx4969159xx">
+A Simple REST Framework</a>, we'll set up a semaphore that waits for a specified 
+number of simultaneously allowed connections:</p>
+<pre>public static int maxSimultaneousConnections = 20;
+private static Semaphore sem = new Semaphore(maxSimultaneousConnections, maxSimultaneousConnections);</pre>
+<p>This is implemented in a worker thread, which is invoked with Task.Run:</p>
+<pre>/// &lt;summary&gt;
+/// Begin listening to connections on a separate worker thread.
+/// &lt;/summary&gt;
+private static void Start(HttpListener listener)
+{
+  listener.Start();
+  Task.Run(() =&gt; RunServer(listener));
+}</pre>
+<pre>/// &lt;summary&gt;
+/// Start awaiting for connections, up to the &quot;maxSimultaneousConnections&quot; value.
+/// This code runs in a separate thread.
+/// &lt;/summary&gt;
+private static void RunServer(HttpListener listener)
+{
+  while (true)
+  {
+    sem.WaitOne();
+    StartConnectionListener(listener);
+  }
+}</pre>
+<p>Lastly, we implement the connection listener as an awaitable asynchronous 
+process:</p>
+<pre>/// &lt;summary&gt;
+/// Await connections.
+/// &lt;/summary&gt;
+private static async void StartConnectionListener(HttpListener listener)
+{
+  // Wait for a connection. Return to caller while we wait.
+  HttpListenerContext context = await listener.GetContextAsync();
+
+  // Release the semaphore so that another listener can be immediately started up.
+  sem.Release();
+
+  // We have a connection, do something...
+}</pre>
+<p>So, let's do something:</p>
+<pre>string response = &quot;Hello Browser!&quot;;
+byte[] encoded = Encoding.UTF8.GetBytes(response);
+context.Response.ContentLength64 = encoded.Length;
+context.Response.OutputStream.Write(encoded, 0, encoded.Length);
+context.Response.OutputStream.Close();</pre>
+<p>And, we need a public <code>Start</code> method:</p>
+<pre>/// &lt;summary&gt;
+/// Starts the web server.
+/// &lt;/summary&gt;
+public static void Start()
+{
+  List&lt;IPAddress&gt; localHostIPs = GetLocalHostIPs();
+  HttpListener listener = InitializeListener(localHostIPs);
+  Start(listener);
+}</pre>
+<p>Now in our console app, we can start up the server:</p>
+<pre>using System;
+
+using Clifton.WebServer;
+
+namespace ConsoleWebServer
+{
+  class Program
+  {
+    static void Main(string[] args)
+    {
+      Server.Start();
+      Console.ReadLine();
+    }
+  }
+}</pre>
+<p>and away we go:</p>
+<p><img border="0" src="ws1.png" width="338" height="207"></p>
+<h3>Always Inspect the Browser's Web Console Window</h3>
+<p>The browser's web console window is your friend - it will tell you all the 
+things you are doing wrong!&nbsp; For example, in our test case above, we 
+discover:</p>
+<p><img border="0" src="ws2.png" width="806" height="251"></p>
+<p>Here we learn that we need to take care of the encoding, which is done in the 
+HTML:</p>
+<pre>string response = &quot;&lt;html&gt;&lt;head&gt;&lt;meta http-equiv='content-type' content='text/html; charset=utf-8'/&gt;
+      &lt;/head&gt;Hello Browser!&lt;/html&gt;&quot;;</pre>
+<p>As this is just an example, we'll leave it at that for now.&nbsp; Later we'll 
+learn more things we're doing wrong!</p>
+<h2>Step 2 - Logging</h2>
+<p>First, let's add some logging, as logging is really useful to see what kind 
+of requests are being made of our web server:</p>
+<pre>Log(context.Request);</pre>
+<pre>/// &lt;summary&gt;
+/// Log requests.
+/// &lt;/summary&gt;
+public static void Log(HttpListenerRequest request)
+{
+  Console.WriteLine(request.RemoteEndPoint + &quot; &quot; + request.HttpMethod + &quot; /&quot; + request.Url.AbsoluteUri.RightOf('/', 3));
+}</pre>
+<p>You can also use remote loggers, like PaperTrailApp, which I've written about
+<a href="http://www.codeproject.com/Articles/843938/Logging-With-PaperTrail-Directly-In-Your-Applicati">
+here</a>.</p>
+<p>We add the Log call right after releasing the semaphore:</p>
+<pre>Log(context.Request);</pre>
+<h3>What we Notice After Adding the Logger</h3>
+<p>Once we add the logging, we notice immediately that the browser not only 
+requests the page at the default page, but it's also asking for favicon.ico!</p>
+<p><img border="0" src="ws3.png" width="302" height="81"></p>
+<p>Well, we need to something about that!</p>
+<h2>Step 3 - Serving Content: Default Routing</h2>
+<p>Obviously, we don't want to code our web pages as strings in C#.&nbsp; So, 
+let's create a basic structure for our web application.&nbsp; This is completely 
+arbitrary, but what I've chosen as a structure is that everything will derive 
+from the folder &quot;Website&quot;.&nbsp; Under &quot;Website&quot;, we find the following folders:</p>
+<ul>
+	<li>Pages: root of all pages</li>
+	<li>CSS: contains all .css and related files</li>
+	<li>Scripts: contains all .js files</li>
+	<li>Images: contains all image files</li>
+</ul>
+<p>To handle some basic functionality, we need the beginnings of a router.&nbsp; Our 
+first cut will do nothing else than respond with files found in the &quot;Webiste&quot; 
+folder and sub-folders as determined by the URL path and the request extension.&nbsp; 
+We first extract some information from the URL request:</p>
+<pre>HttpListenerRequest request = context.Request;
+string path = request.RawUrl.LeftOf(&quot;?&quot;); // Only the path, not any of the parameters
+string verb = request.HttpMethod; // get, post, delete, etc.
+string parms = request.RawUrl.RightOf(&quot;?&quot;); // Params on the URL itself follow the URL and are separated by a ?
+Dictionary&lt;string, string&gt; kvParams = GetKeyValues(parms); // Extract into key-value entries.</pre>
+<p>We can now pass this information to the router:</p>
+<pre>router.Route(verb, path, kvParams);</pre>
+<p>Even though it could be static, there are some potential benefits to making 
+the router an actual instance, so we initialize it in the <code>Server</code> class:</p>
+<pre>private static Router router = new Router();</pre>
+<p>Another nitpicky detail is the actual website path.&nbsp; Because I'm running 
+the console program out of a bin\debug folder, the website path is actually 
+&quot;..\..\Website&quot;.&nbsp; Here's a clumsy way of getting this path:</p>
+<pre>public static string GetWebsitePath()
+{
+  // Path of our exe.
+  string websitePath = Assembly.GetExecutingAssembly().Location;
+  websitePath = websitePath.LeftOfRightmostOf(&quot;\\&quot;).LeftOfRightmostOf(&quot;\\&quot;).LeftOfRightmostOf(&quot;\\&quot;) + &quot;\\Website&quot;;
+
+  return websitePath;
+}</pre>
+<p>A little refactoring is need to We pass this in to the web server, which 
+configures the router:</p>
+<pre>public static void Start(string websitePath)
+{
+  router.WebsitePath = websitePath;
+  ...</pre>
+<p>Since I don't particularly like switch statements, we'll initialize a map of 
+known extensions and their loader locations.&nbsp; Consider how different 
+functions could be used to load the content from, say, a database.</p>
+<pre>public class Router
+{
+  public string WebsitePath { get; set; }
+
+  private Dictionary&lt;string, ExtensionInfo&gt; extFolderMap;
+
+  public Router()
+  {
+    extFolderMap = new Dictionary&lt;string, ExtensionInfo&gt;() 
+    {
+      {&quot;ico&quot;, new ExtensionInfo() {Loader=ImageLoader, ContentType=&quot;image/ico&quot;}},
+      {&quot;png&quot;, new ExtensionInfo() {Loader=ImageLoader, ContentType=&quot;image/png&quot;}},
+      {&quot;jpg&quot;, new ExtensionInfo() {Loader=ImageLoader, ContentType=&quot;image/jpg&quot;}},
+      {&quot;gif&quot;, new ExtensionInfo() {Loader=ImageLoader, ContentType=&quot;image/gif&quot;}},
+      {&quot;bmp&quot;, new ExtensionInfo() {Loader=ImageLoader, ContentType=&quot;image/bmp&quot;}},
+      {&quot;html&quot;, new ExtensionInfo() {Loader=PageLoader, ContentType=&quot;text/html&quot;}},
+      {&quot;css&quot;, new ExtensionInfo() {Loader=FileLoader, ContentType=&quot;text/css&quot;}},
+      {&quot;js&quot;, new ExtensionInfo() {Loader=FileLoader, ContentType=&quot;text/javascript&quot;}},
+      {&quot;&quot;, new ExtensionInfo() {Loader=PageLoader, ContentType=&quot;text/html&quot;}},
+    };
+  }
+  ....</pre>
+<p><img border="0" src="note.png" width="24" height="32">&nbsp; Notice how we 
+also handle the &quot;no extension&quot; case, which we implement as assuming that the 
+content will be an HTML page.</p>
+<p><img border="0" src="note.png" width="24" height="32">&nbsp; Also notice that 
+we set the content type.&nbsp; If we don't do this, we get a warning in the web 
+console that content is assumed to be of a particular type.</p>
+<p><img border="0" src="note.png" width="24" height="32">&nbsp; Finally, notice 
+that we're indicating a function for performing the actual loading.&nbsp; </p>
+<h3>Image Loader</h3>
+<pre>/// &lt;summary&gt;
+/// Read in an image file and returns a ResponsePacket with the raw data.
+/// &lt;/summary&gt;
+private ResponsePacket ImageLoader(string fullPath, string ext, ExtensionInfo extInfo)
+{
+  FileStream fStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read);
+  BinaryReader br = new BinaryReader(fStream);
+  ResponsePacket ret = new ResponsePacket() { Data = br.ReadBytes((int)fStream.Length), ContentType = extInfo.ContentType };
+  br.Close();
+  fStream.Close();
+
+  return ret;
+}</pre>
+<h3>File Loader</h3>
+<pre>/// &lt;summary&gt;
+/// Read in what is basically a text file and return a ResponsePacket with the text UTF8 encoded.
+/// &lt;/summary&gt;
+private ResponsePacket FileLoader(string fullPath, string ext, ExtensionInfo extInfo)
+{
+  string text = File.ReadAllText(fullPath);
+  ResponsePacket ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(text), ContentType = extInfo.ContentType, Encoding = Encoding.UTF8 };
+
+  return ret;
+}</pre>
+<h3>Page Loader</h3>
+<p>The page loader has to do some fancy footwork to handle options like:</p>
+<ul>
+	<li>foo.com</li>
+	<li>foo.com\index</li>
+	<li>foo.com\index.html</li>
+</ul>
+<p>All of these combinations end up load Pages\index.html.</p>
+<pre>/// &lt;summary&gt;
+/// Load an HTML file, taking into account missing extensions and a file-less IP/domain, 
+/// which should default to index.html.
+/// &lt;/summary&gt;
+private ResponsePacket PageLoader(string fullPath, string ext, ExtensionInfo extInfo)
+{
+  ResponsePacket ret = new ResponsePacket();
+
+  if (fullPath == WebsitePath) // If nothing follows the domain name or IP, then default to loading index.html.
+  {
+    ret = Route(GET, &quot;/index.html&quot;, null);
+  }
+  else
+  {
+    if (String.IsNullOrEmpty(ext))
+    {
+      // No extension, so we make it &quot;.html&quot;
+      fullPath = fullPath + &quot;.html&quot;;
+    }
+
+    // Inject the &quot;Pages&quot; folder into the path
+    fullPath = WebsitePath + &quot;\\Pages&quot; + fullPath.RightOf(WebsitePath);
+    ret = FileLoader(fullPath, ext, extInfo);
+  }
+
+  return ret;
+}</pre>
+<p>We have a couple helper classes:</p>
+<pre>public class ResponsePacket
+{
+  public string Redirect { get; set; }
+  public byte[] Data { get; set; }
+  public string ContentType { get; set; }
+  public Encoding Encoding { get; set; }
+}
+
+internal class ExtensionInfo
+{
+  public string ContentType { get; set; }
+  public Func&lt;string, string, string, ExtensionInfo, ResponsePacket&gt; Loader { get; set; }
+}</pre>
+<p>And after putting it all together, we have the beginnings of a router, which 
+now returns content located in files.</p>
+<pre>public ResponsePacket Route(string verb, string path, Dictionary&lt;string, string&gt; kvParams)
+{
+  string ext = path.RightOf('.');
+  ExtensionInfo extInfo;
+  ResponsePacket ret = null;
+
+  if (extFolderMap.TryGetValue(ext, out extInfo))
+  {
+    // Strip off leading '/' and reformat as with windows path separator.
+    string fullPath = Path.Combine(WebsitePath, path);
+    ret = extInfo.Loader(fullPath, ext, extInfo);
+  }
+
+  return ret;
+}</pre>
+<p>We need one final refactoring -- removing our test response and replacing it 
+with the content returned by the router:</p>
+<pre>private static void Respond(HttpListenerResponse response, ResponsePacket resp)
+{
+  response.ContentType = resp.ContentType;
+  response.ContentLength64 = resp.Data.Length;
+  response.OutputStream.Write(resp.Data, 0, resp.Data.Length);
+  response.ContentEncoding = resp.Encoding;
+  response.StatusCode = (int)HttpStatusCode.OK;
+  response.OutputStream.Close();
+}</pre>
+<p><b>This is bare-bones implementation for now.</b></p>
+<p>We can see this in action.&nbsp; Here's some HTML:</p>
+<pre>&lt;!DOCTYPE html&gt;
+
+&lt;html lang=&quot;en&quot; xmlns=&quot;http://www.w3.org/1999/xhtml&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;utf-8&quot; /&gt;
+  &lt;script type=&quot;text/javascript&quot; src=&quot;/Scripts/jquery-1.11.2.min.js&quot;&gt;&lt;/script&gt;
+  &lt;link type=&quot;text/css&quot; rel=&quot;Stylesheet&quot; href=&quot;/CSS/demo.css&quot;/&gt;
+  &lt;title&gt;Button Click Demo&lt;/title&gt;
+
+  &lt;script type=&quot;text/javascript&quot;&gt;
+    $(document).ready(function () {
+      $(&quot;#me&quot;).click(function () {
+        alert(&quot;I've been clicked!&quot;);
+      });
+    });
+  &lt;/script&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+  &lt;div class=&quot;center-inner top-margin-50&quot;&gt;
+    &lt;input class=&quot;button&quot; type=&quot;button&quot; value=&quot;Click Me&quot; id=&quot;me&quot;/&gt;
+  &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+<p>You can see the website structure:</p>
+<p><img border="0" src="ws5.png" width="264" height="292"></p>
+<p>And our little demo page works!</p>
+<p><img border="0" src="ws4.png" width="376" height="375"></p>
+<p>You can see several things going on here:</p>
+<ol>
+	<li>Yes indeed, favicon.ico is being loaded (it's a palm tree, if you were 
+	wondering)</li>
+	<li>The page is of course being loaded</li>
+	<li>The styling is working</li>
+	<li>The JQuery script is working</li>
+</ol>
+<p>This is all fine and dandy, but:</p>
+<ul>
+	<li>Unknown extensions are not handled</li>
+	<li>Missing content is not handled</li>
+	<li>Errors loading content are not handled</li>
+	<li>The verb is always assumed to be &quot;get&quot;</li>
+	<li>The application isn't given any option to manipulate the content 
+	(particularly the HTML) after it's been loaded</li>
+	<li>You can't override the routing</li>
+	<li>There's not concept of authorized content</li>
+	<li>There's no session duration considered</li>
+	<li>There's no exception handling</li>
+	<li>Redirects are not handled</li>
+</ul>
+<p>These are all issues that we need to address, however, we can at this point 
+create some pages with CSS and Javascript:, so, even though there's a lot of things to still work on, we do at this point 
+have a lot working!</p>
+<p><img border="0" src="key-small.jpg" width="94" height="33"></p>
+<p>One of the things revealed here is how the actual location of the content 
+&quot;file&quot; can be completely spoofed by the server.&nbsp; In the above code, I put 
+all the HTML content under the folder Pages, thus spoofing the root location.&nbsp; 
+We could do other things -- load data from a database, communicate with another 
+server, generate the page dynamically from data...these are all features will 
+explore as we move beyond default content loading.</p>
+<h2>Step 4 - The Devil is in the Details</h2>
+<p>Let's start dealing with the issues mentioned above.</p>
+<h3>Error Pages</h3>
+<p>We'll add several error pages, even though we're not using them all at the 
+moment:</p>
+<ul>
+	<li>Expired session</li>
+	<li>Not authorized</li>
+	<li>Page not found</li>
+	<li>Server error</li>
+	<li>Unknown type</li>
+</ul>
+<p>Now, you may wonder why the server knows things about expired sessions and 
+authorization failures.&nbsp; Well, because it makes sense -- these errors are 
+integral to the routing, but the error state is determined by the web 
+application (not the server.)&nbsp; All the server does is query the web 
+application for the state.&nbsp; More on this later. </p>
+<p>We'd like the application to be determine where these pages are for the given 
+error, so we'll add an enum to the server:</p>
+<pre>public enum ServerError
+{
+  OK,
+  ExpiredSession,
+  NotAuthorized,
+  FileNotFound,
+  PageNotFound,
+  ServerError,
+  UnknownType,
+}</pre>
+<p>We can now begin to handle errors (without throwing exceptions).&nbsp; First 
+off is an unknown extension:</p>
+<pre>if (extFolderMap.TryGetValue(ext, out extInfo))
+{
+ ...
+}
+else
+{
+  ret = new ResponsePacket() { Error = Server.ServerError.UnknownType };
+}</pre>
+<p>and so forth.&nbsp; We'll use a callback that the web application can provide 
+for handling errors.&nbsp; This is in the form of the page to which the user 
+should be redirected.</p>
+<p>We then refactor our code to get, from the application, the page to display 
+on error:</p>
+<pre>ResponsePacket resp = router.Route(verb, path, kvParams);
+
+if (resp.Error != ServerError.OK)
+{
+  resp = router.Route(&quot;get&quot;, onError(resp.Error), null);
+}
+
+Respond(context.Response, resp);</pre>
+<p>and implement a straight forward error handler in the application:</p>
+<pre>public static string ErrorHandler(Server.ServerError error)
+{
+  string ret = null;
+
+  switch (error)
+  {
+    case Server.ServerError.ExpiredSession:
+      ret= &quot;/ErrorPages/expiredSession.html&quot;;
+      break;
+    case Server.ServerError.FileNotFound:
+      ret = &quot;/ErrorPages/fileNotFound.html&quot;;
+      break;
+    case Server.ServerError.NotAuthorized:
+      ret = &quot;/ErrorPages/notAuthorized.html&quot;;
+      break;
+    case Server.ServerError.PageNotFound:
+      ret = &quot;/ErrorPages/pageNotFound.html&quot;;
+      break;
+    case Server.ServerError.ServerError:
+      ret = &quot;/ErrorPages/serverError.html&quot;;
+      break;
+    case Server.ServerError.UnknownType:
+      ret = &quot;/ErrorPages/unknownType.html&quot;;
+      break;
+  }
+
+  return ret;
+}</pre>
+<p>Of course, we have to initialize the error handler:</p>
+<pre>Server.onError = ErrorHandler;</pre>
+<p>We can now test a few things out.&nbsp; Of course, your application may want 
+some more sophisticated messages!</p>
+<h4>Unknown Type Error</h4>
+<p><img border="0" src="error1.png" width="380" height="194"></p>
+<h4>Page Not Found</h4>
+<h4>
+<img border="0" src="error3.png" width="377" height="259"></h4>
+<h4>File Not Found</h4>
+<p>
+<img border="0" src="error4.png" width="377" height="259"></p>
+<h3>Redirects</h3>
+<p>You'll note that the URL in the above error messages hasn't changed to 
+reflect the page.&nbsp; This is because we don't have response redirect working.&nbsp; 
+Time to fix that:</p>
+<p>We assume that the error handler will always redirect us to a different page, 
+so we change how we handle the response.&nbsp; Rather than getting a new 
+<code>ResponsePacket</code> and sending that content back to the browser, we simply set the 
+<code>Redirect</code> property to the page the web application wants us to go to.&nbsp; This 
+becomes, by the way, a universal redirect mechanism.)</p>
+<pre>if (resp.Error != ServerError.OK)
+{
+  resp.Redirect = onError(resp.Error);
+}</pre>
+<p>and we do a little refactoring in the <code>Resond</code> method:</p>
+<pre>private static void Respond(HttpListenerRequest request, HttpListenerResponse response, ResponsePacket resp)
+{
+  if (String.IsNullOrEmpty(resp.Redirect))
+  {
+    response.ContentType = resp.ContentType;
+    response.ContentLength64 = resp.Data.Length;
+    response.OutputStream.Write(resp.Data, 0, resp.Data.Length);
+    response.ContentEncoding = resp.Encoding;
+    response.StatusCode = (int)HttpStatusCode.OK;
+  }
+  else
+  {
+    response.StatusCode = (int)HttpStatusCode.Redirect;
+    response.Redirect(&quot;http://&quot; + request.UserHostAddress + resp.Redirect);
+  }
+
+  response.OutputStream.Close();
+}</pre>
+<p><img border="0" src="note.png" width="24" height="32">&nbsp; By the way, it's 
+very important to close the output stream.&nbsp; If you don't, the browser can 
+be left hanging, waiting for data.</p>
+<p><img border="0" src="note.png" width="24" height="32">&nbsp; Notice that 
+since we're handling errors with redirects, the only two possible status codes 
+our web server can respond with is OK and Redirect.</p>
+<p>Now our redirecting is working:</p>
+<p><img border="0" src="error2.png" width="377" height="259"></p>
+<h4>Exception Handling</h4>
+<p>We use the same redirect mechanism to catch actual exceptions by wrapping the 
+<code>GetContextAsync</code> continuation in a try-catch block:</p>
+<pre>catch(Exception ex)
+{
+  Console.WriteLine(ex.Message);
+  Console.WriteLine(ex.StackTrace);
+  resp = new ResponsePacket() { Redirect = onError(ServerError.ServerError) };
+}</pre>
+<p>Here's what a simulated error looks like:</p>
+<p><img border="0" src="error5.png" width="791" height="424"></p>
+<h2>Step 5 - Review and Tackle More Issues</h2>
+<p>Where are we?</p>
+<ul>
+	<li><strike>Unknown extensions are not handled</strike></li>
+	<li><strike>Missing content is not handled</strike></li>
+	<li><strike>Errors loading content are not handled</strike></li>
+	<li>The verb is always assumed to be &quot;get&quot;</li>
+	<li>The application isn't given any option to manipulate the content 
+	(particularly the HTML) after it's been loaded</li>
+	<li>You can't override the routing</li>
+	<li>There's not concept of authorized content</li>
+	<li>There's no session duration considered</li>
+	<li><strike>There's no exception handling</strike></li>
+	<li><strike>Redirects are not handled</strike></li>
+</ul>
+<p>Let's deal with verbs next, particularly POST verbs.&nbsp; This will allow us 
+to tackle the next three live bullet items.</p>
+<h3>Verbs</h3>
+<p>There are <a href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html">
+several verbs</a> that can accompany an HTTP request:</p>
+<ul>
+	<li>OPTIONS</li>
+	<li>GET</li>
+	<li>HEAD</li>
+	<li>POST</li>
+	<li>PUT</li>
+	<li>DELETE</li>
+	<li>TRACE</li>
+	<li>CONNECT</li>
+</ul>
+<p>Essentially, the web server doesn't really care about the verb -- all the 
+verb does is provide additional information as to what handler to invoke for the 
+response.&nbsp; Here we finally get to a topic I've avoided so far -- 
+controllers.&nbsp; Rather than the web server having any cognizance of a 
+Model-View-Controller pattern and/or enforcing such pattern on the web 
+application developer, the web server I've implemented provides a simple 
+mechanism for routing verbs and paths to handlers.&nbsp; That's all it needs to 
+do.&nbsp; The handler, in turn, determines whether the browser should be 
+redirected to a different page or stay on the current page.&nbsp; Behind the 
+scenes, the handler can do other things, but from the perspective of the web 
+server, that's all that the web server cares about.</p>
+<p>&nbsp;</p>
+<h2>Performance</h2>
+<p>&nbsp;</p>
+<p>&nbsp;&nbsp; </p>
+
+</body>
+
+</html>

@@ -1,0 +1,24 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <script type="text/javascript" src="/Scripts/jquery-1.11.2.min.js"></script>
+    <link type="text/css" rel="Stylesheet" href="/CSS/demo.css"/>
+    <title>Button Click Demo</title>
+    
+    <script type="text/javascript">
+        $(document).ready(function () {
+            $("#me").click(function () {
+                alert("I've been clicked!");
+            });
+        });
+    </script>
+
+</head>
+<body>
+    <div class="center-inner top-margin-50">
+        <input class="button" type="button" value="Click Me" id="me"/>
+    </div>
+</body>
+</html>

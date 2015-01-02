@@ -1,0 +1,18 @@
+﻿.button
+{
+	background-color: blue;
+	color: white;
+	width: 120px;
+	height: 40px;
+}
+
+div.center-inner
+{
+	display: table;
+    margin: 0 auto;
+}
+
+.top-margin-50
+{
+	padding-top: 50px;
+}
