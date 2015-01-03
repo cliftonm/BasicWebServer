@@ -4,6 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Clifton.ExtensionMethods;
+
 namespace Clifton.WebServer
 {
 	/// <summary>
@@ -19,6 +21,14 @@ namespace Clifton.WebServer
 		}
 
 		public abstract ResponsePacket Handle(Session session, Dictionary<string, string> parms);
+
+		protected ResponsePacket InvokeHandler(Session session, Dictionary<string, string> parms)
+		{
+			ResponsePacket ret = null;
+			handler.IfNotNull((h) => ret = h(session, parms));
+
+			return ret;
+		}
 	}
 
 	/// <summary>
@@ -26,14 +36,14 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AnonymousRouteHandler : RouteHandler
 	{
-		public AnonymousRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler)
+		public AnonymousRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler = null)
 			: base(handler)
 		{
 		}
 
 		public override ResponsePacket Handle(Session session, Dictionary<string, string> parms)
 		{
-			return handler(session, parms);
+			return InvokeHandler(session, parms);
 		}
 	}
 
@@ -42,7 +52,7 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AuthenticatedRouteHandler : RouteHandler
 	{
-		public AuthenticatedRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler)
+		public AuthenticatedRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler = null)
 			: base(handler)
 		{
 		}
@@ -53,7 +63,7 @@ namespace Clifton.WebServer
 
 			if (session.Authorized)
 			{
-				ret = handler(session, parms);
+				ret = InvokeHandler(session, parms);
 			}
 			else
 			{
@@ -69,7 +79,7 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AuthenticatedExpirableRouteHandler : AuthenticatedRouteHandler
 	{
-		public AuthenticatedExpirableRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler)
+		public AuthenticatedExpirableRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler = null)
 			: base(handler)
 		{
 		}

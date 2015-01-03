@@ -23,6 +23,7 @@ namespace Clifton.WebServer
 		public string Verb { get; set; }
 		public string Path { get; set; }
 		public RouteHandler Handler { get; set; }
+		public Func<Session, Dictionary<string, string>, byte[], byte[]> PostProcess { get; set; }
 	}
 
 	internal class ExtensionInfo
@@ -72,6 +73,7 @@ namespace Clifton.WebServer
 			ExtensionInfo extInfo;
 			ResponsePacket ret = null;
 			verb = verb.ToLower();
+			path = path.ToLower();
 
 			if (verb != GET)
 			{
@@ -87,12 +89,15 @@ namespace Clifton.WebServer
 				string wpath = path.Substring(1).Replace('/', '\\');			// Strip off leading '/' and reformat as with windows path separator.
 				string fullPath = Path.Combine(WebsitePath, wpath);
 
-				Route handler = routes.SingleOrDefault(r => verb == r.Verb.ToLower() && path == r.Path);
+				Route routeHandler = routes.SingleOrDefault(r => verb == r.Verb.ToLower() && path == r.Path.ToLower());
 
-				if (handler != null)
+				if (routeHandler != null)
 				{
 					// Application has a handler for this route.
-					ResponsePacket handlerResponse = handler.Handler.Handle(session, kvParams);
+					ResponsePacket handlerResponse = null;
+
+					// If a handler exists:
+					routeHandler.Handler.IfNotNull((h) => handlerResponse = h.Handle(session, kvParams));
 
 					if (handlerResponse == null)
 					{
@@ -104,6 +109,9 @@ namespace Clifton.WebServer
 						// Respond with redirect.
 						ret = handlerResponse;
 					}
+
+					// If a post process callback exists, call it.
+					routeHandler.PostProcess.IfNotNull((p) => ret.Data = p(session, kvParams, ret.Data));
 				}
 				else
 				{
@@ -213,7 +221,8 @@ namespace Clifton.WebServer
 				else
 				{
 					string text = File.ReadAllText(fullPath);
-					text = Server.postProcess(session, text);			// post processing option, such as adding a validation token.
+					// This is our built-in CSRF post process function.
+					text = Server.postProcess(session, text);
 					ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(text), ContentType = extInfo.ContentType, Encoding = Encoding.UTF8 };
 				}
 			}
