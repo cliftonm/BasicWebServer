@@ -9,6 +9,8 @@
 <body>
 
 <p>Writing a Basic Web Server</p>
+<p>
+<img border="0" src="ws1.png" width="338" height="207"></p>
 <h2>Introduction</h2>
 <p>Mainly for the fun of it, I decided to look into what's involved in writing 
 my own web server.&nbsp; I quickly became enthralled with the idea and the 
@@ -287,7 +289,7 @@ the console program out of a bin\debug folder, the website path is actually
   return websitePath;
 }</pre>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; A little refactoring is need to We pass this in to the web server, which 
+<img border="0" src="refactor.png">A little refactoring is need to We pass this in to the web server, which 
 configures the router:</p>
 <pre>public static void Start(string websitePath)
 {
@@ -418,7 +420,7 @@ now returns content located in files.</p>
   return ret;
 }</pre>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; We need one final refactoring -- removing our test response and replacing it 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; We need one final refactoring -- removing our test response and replacing it 
 with the content returned by the router:</p>
 <pre>private static void Respond(HttpListenerResponse response, ResponsePacket resp)
 {
@@ -534,7 +536,7 @@ else
 for handling errors.&nbsp; This is in the form of the page to which the user 
 should be redirected.</p>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; We then refactor our code to get, from the application, the page to display 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; We then refactor our code to get, from the application, the page to display 
 on error:</p>
 <pre>ResponsePacket resp = router.Route(verb, path, kvParams);
 
@@ -599,7 +601,7 @@ becomes, by the way, a universal redirect mechanism.)</p>
   resp.Redirect = onError(resp.Error);
 }</pre>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; and we do a little refactoring in the <code>Resond</code> method:</p>
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; and we do a little refactoring in the <code>Resond</code> method:</p>
 <pre>private static void Respond(HttpListenerRequest request, HttpListenerResponse response, ResponsePacket resp)
 {
   if (String.IsNullOrEmpty(resp.Redirect))
@@ -695,7 +697,7 @@ URL parameters (we'll deal with post parameters in a bit) and expects an
   routes.Add(route);
 }</pre>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; Now we can implement calling application specific handlers, which is a 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; Now we can implement calling application specific handlers, which is a 
 refactor of the Route method:</p>
 <pre>public ResponsePacket Route(string verb, string path, Dictionary&lt;string, string&gt; kvParams)
 {
@@ -793,14 +795,14 @@ implementation for now.</p>
 <p>And, without doing anything further, let's look at the trace log and the 
 behavior when we click on the button:</p>
 <p>
-<img border="0" src="../../articles/web%20server/redirect1.png" width="439" height="401"></p>
+<img border="0" src="redirect1.png" width="439" height="401"></p>
 <p>First we see the GET verb as the page loads, then, clicking on the button, we 
 see the POST with the parameters.&nbsp; The fun thing about writing your own web 
 server is you really get a deeper sense of what is happening behind the scenes, 
 something that is important for people who are new to web development.&nbsp; 
 Note the following in relation to the HTML:</p>
 <p>
-<img border="0" src="../../articles/web%20server/redirect2.png" width="675" height="361"></p>
+<img border="0" src="redirect2.png" width="675" height="361"></p>
 <ol>
 	<li>The method verb must be in lowercase.&nbsp; If you use &quot;POST&quot;, Visual 
 	Studio's IDE warns that this is an unrecognized HTML5 verb.</li>
@@ -830,10 +832,10 @@ public static string RedirectMe(Dictionary&lt;string, string&gt; parms)
 }</pre>
 <p>And now, when&nbsp; we click the button, we're redirected:</p>
 <p>
-<img border="0" src="../../articles/web%20server/redirect3.png" width="425" height="365"></p>
+<img border="0" src="redirect3.png" width="425" height="365"></p>
 <p>That was easy.&nbsp; </p>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; With a minimal amount of refactoring, we've take care of 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; With a minimal amount of refactoring, we've take care of 
 these three issues:</p>
 <ul>
 	<li>The verb is always assumed to be &quot;get&quot;</li>
@@ -849,7 +851,7 @@ like is something a little more sophisticated that can handle very common tasks:
 	<li>checking if the session has expired</li>
 </ul>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; We'll refactor the handler callbacks above to utilize a Routing class from 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; We'll refactor the handler callbacks above to utilize a Routing class from 
 which we can provide some built-in behaviors as well as allowing the web 
 application developer to replace and/or add their own additional behaviors, such 
 as role-based authentication.</p>
@@ -953,7 +955,7 @@ endpoint IP:</p>
 after giving the router (and our handlers) the option to first inspect the last 
 session state.</p>
 <p>
-<img border="0" src="../../articles/web%20server/note.png" width="24" height="32">&nbsp; 
+<img border="0" src="note.png" width="24" height="32">&nbsp; 
 Because session expiration is intimately associated with authorization, we 
 expect that when a session expires, the <code>Authorized</code> flag will be cleared.</p>
 <h3>Anonymous vs. Authenticated Routes</h3>
@@ -1062,7 +1064,7 @@ namespace Clifton.WebServer
 <p>Notice that we also now pass the session instance to the handler.&nbsp; 
 Convenient!</p>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; Next, we refactor the web application routing table to use the <code>RouteHandler</code> 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; Next, we refactor the web application routing table to use the <code>RouteHandler</code> 
 derived classes.&nbsp; Our Route class is refactored:</p>
 <pre>public class Route
 {
@@ -1097,7 +1099,7 @@ not set in the session:</p>
 <p>We'll click on the &quot;Redirect Me&quot; button, and note that we get the &quot;not 
 authorized&quot; page:</p>
 <p>
-<img border="0" src="../../articles/web%20server/auth1.png" width="370" height="241"></p>
+<img border="0" src="auth1.png" width="370" height="241"></p>
 <p>We'll do the same thing to test the expiration logic: </p>
 <pre>Server.AddRoute(new Route() 
   { 
@@ -1108,7 +1110,7 @@ authorized&quot; page:</p>
 <p>and after waiting 60 seconds (configurable in the Server) on the &quot;Redirect 
 Me&quot; page:</p>
 <p>
-<img border="0" src="../../articles/web%20server/exp1.png" width="380" height="270"></p>
+<img border="0" src="exp1.png" width="380" height="270"></p>
 <p>While building a website, I find that authentication/expiration often gets in 
 the way, so I like to spoof the authentication.&nbsp; We can do that by 
 implementing onRequest, which the server calls if it exists:</p>
@@ -1175,7 +1177,7 @@ script:</p>
 for this request, we see the server responding with the contents of the page, 
 which is expected.</p>
 <p>
-<img border="0" src="../../articles/web%20server/ajax1.png" width="496" height="391"></p>
+<img border="0" src="ajax1.png" width="496" height="391"></p>
 <p>So let's register a route handler:</p>
 <pre>Server.AddRoute(new Route() 
   { 
@@ -1190,7 +1192,7 @@ a data response:</p>
   return &quot;what???&quot;;
 }</pre>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; 
 Yes, it's time for another refactoring.&nbsp; The handler needs finer control 
 over the response, and thus should return a <code>ResponsePacket</code>, for 
 example:</p>
@@ -1229,7 +1231,7 @@ if (handler != null)
 }</pre>
 <p>but the change took all of about 5 minutes, and here's the result:</p>
 <p>
-<img border="0" src="../../articles/web%20server/ajax2.png" width="383" height="346"></p>
+<img border="0" src="ajax2.png" width="383" height="346"></p>
 <p>You can of course return the data in JSON or XML -- that is completely 
 independent of the web server, but you are advised to set the content type 
 correctly:</p>
@@ -1242,7 +1244,7 @@ correctly:</p>
 but I wanted to use it as an example.&nbsp; Look what happens if instead, we use 
 the GET verb:</p>
 <p>
-<img border="0" src="../../articles/web%20server/ajax3.png" width="484" height="458"></p>
+<img border="0" src="ajax3.png" width="484" height="458"></p>
 <p>With the GET verb, the parameters are passed as part of the URL!&nbsp; Let's 
 write a handler for this route:</p>
 <pre>Server.AddRoute(new Route() 
@@ -1254,11 +1256,11 @@ write a handler for this route:</p>
 <p>Note that we have to handle the GET verb with both no parameters (the 
 browser's request) and with parameters:</p>
 <p>
-<img border="0" src="../../articles/web%20server/ajax4.png" width="364" height="157"></p>
+<img border="0" src="ajax4.png" width="364" height="157"></p>
 <p>Interestingly, we can use the browser now to test the GET response -- note 
 the URL:</p>
 <p>
-<img border="0" src="../../articles/web%20server/ajax5.png" width="292" height="111"></p>
+<img border="0" src="ajax5.png" width="292" height="111"></p>
 <h3>What's that Underscore?</h3>
 <p>The underscore parameter is added by jQuery to get around Internet Explorer's 
 caching, and is present only when cache is set to false and you're using the GET 
@@ -1281,7 +1283,7 @@ to give proper credit):</p>
 }</pre>
 <p>Possibly not the best approach, but it does work.</p>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; The salient thing here is that, when responding with a redirect, the public 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; The salient thing here is that, when responding with a redirect, the public 
 IP must be used, not the <code>UserHostAddress</code>:</p>
 <pre>if (String.IsNullOrEmpty(publicIP))
 {
@@ -1337,7 +1339,7 @@ private static string DefaultPostProcess(Session session, string html)
   return ret;
 }</pre>
 <p>
-<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; 
+<img border="0" src="refactor.png" width="32" height="31">&nbsp; 
 Refactoring time!&nbsp; A token is created when a new session is encountered:</p>
 <pre>public Session GetSession(IPEndPoint remoteEndPoint)
 {
@@ -1420,16 +1422,16 @@ private bool VerifyCSRF(Session session, Dictionary&lt;string,string&gt; kvParam
 &lt;/body&gt;
 &lt;/html&gt;</pre>
 <p>
-<img border="0" src="../../articles/web%20server/csrf1.png" width="340" height="298"></p>
+<img border="0" src="csrf1.png" width="340" height="298"></p>
 <p>We can inspect the source and see our token, for example:</p>
 <pre>&lt;form name=&quot;myform&quot; action=&quot;/demo/redirect&quot; method=&quot;post&quot;&gt;
   &lt;input name='__CSRFToken__' type='hidden' value='a9161119-de6f-4bb2-8e21-8d089d556c37'/&gt;</pre>
 <p>And in the console window, on the post, we see:</p>
 <p>
-<img border="0" src="../../articles/web%20server/csrf2.png" width="327" height="176"></p>
+<img border="0" src="csrf2.png" width="327" height="176"></p>
 <p>If we omit the validation token, we get a warning in the console window:</p>
 <p>
-<img border="0" src="../../articles/web%20server/csrf3.png" width="421" height="190"></p>
+<img border="0" src="csrf3.png" width="421" height="190"></p>
 <h3>Other HTML Replacement</h3>
 <p>When you have finer grained control over the server, you can pretty much do 
 anything you want in terms of inventing your own set of token replacements.&nbsp; 
