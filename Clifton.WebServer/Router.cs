@@ -18,23 +18,35 @@ namespace Clifton.WebServer
 		public Server.ServerError Error { get; set; }
 	}
 
+	public class Route
+	{
+		public string Verb { get; set; }
+		public string Path { get; set; }
+		public RouteHandler Handler { get; set; }
+	}
+
 	internal class ExtensionInfo
 	{
 		public string ContentType { get; set; }
-		public Func<string, string, ExtensionInfo, ResponsePacket> Loader { get; set; }
+		public Func<Session, string, string, ExtensionInfo, ResponsePacket> Loader { get; set; }
 	}
 
 	public class Router
 	{
 		public string WebsitePath { get; set; }
 
-		private  const string POST = "post";
-		private const string GET = "get";
+		public const string POST = "post";
+		public const string GET = "get";
+		public const string PUT = "put";
+		public const string DELETE = "delete";
 
 		private Dictionary<string, ExtensionInfo> extFolderMap;
+		private List<Route> routes;
 
 		public Router()
 		{
+			routes = new List<WebServer.Route>();
+
 			extFolderMap = new Dictionary<string, ExtensionInfo>() 
 			{
 				{"ico", new ExtensionInfo() {Loader=ImageLoader, ContentType="image/ico"}},
@@ -49,17 +61,55 @@ namespace Clifton.WebServer
 			};
 		}
 
-		public ResponsePacket Route(string verb, string path, Dictionary<string, string> kvParams)
+		public void AddRoute(Route route)
+		{
+			routes.Add(route);
+		}
+
+		public ResponsePacket Route(Session session, string verb, string path, Dictionary<string, string> kvParams)
 		{
 			string ext = path.RightOfRightmostOf('.');
 			ExtensionInfo extInfo;
 			ResponsePacket ret = null;
+			verb = verb.ToLower();
+
+			if (verb != GET)
+			{
+				if (!VerifyCSRF(session, kvParams))
+				{
+					// Don't like multiple return points, but it's so convenient here!
+					return Server.Redirect(Server.onError(Server.ServerError.ValidationError));
+				}
+			}
 
 			if (extFolderMap.TryGetValue(ext, out extInfo))
 			{
-				path = path.Substring(1).Replace('/', '\\');			// Strip off leading '/' and reformat as with windows path separator.
-				string fullPath = Path.Combine(WebsitePath, path);
-				ret = extInfo.Loader(fullPath, ext, extInfo);
+				string wpath = path.Substring(1).Replace('/', '\\');			// Strip off leading '/' and reformat as with windows path separator.
+				string fullPath = Path.Combine(WebsitePath, wpath);
+
+				Route handler = routes.SingleOrDefault(r => verb == r.Verb.ToLower() && path == r.Path);
+
+				if (handler != null)
+				{
+					// Application has a handler for this route.
+					ResponsePacket handlerResponse = handler.Handler.Handle(session, kvParams);
+
+					if (handlerResponse == null)
+					{
+						// Respond with default content loader.
+						ret = extInfo.Loader(session, fullPath, ext, extInfo);
+					}
+					else
+					{
+						// Respond with redirect.
+						ret = handlerResponse;
+					}
+				}
+				else
+				{
+					// Attempt default behavior
+					ret = extInfo.Loader(session, fullPath, ext, extInfo);
+				}
 			}
 			else
 			{
@@ -70,9 +120,30 @@ namespace Clifton.WebServer
 		}
 
 		/// <summary>
+		/// If a CSRF validation token exists, verify it matches our session value.
+		/// If one doesn't exist, issue a warning to the console.
+		/// </summary>
+		private bool VerifyCSRF(Session session, Dictionary<string,string> kvParams)
+		{
+			bool ret = true;
+			string token;
+
+			if (kvParams.TryGetValue(Server.validationTokenName, out token))
+			{
+				ret = session.Objects[Server.validationTokenName].ToString() == token;
+			}
+			else
+			{
+				Console.WriteLine("Warning - CSRF token is missing.  Consider adding it to the request.");
+			}
+
+			return ret;
+		}
+
+		/// <summary>
 		/// Read in what is basically a text file and return a ResponsePacket with the text UTF8 encoded.
 		/// </summary>
-		private ResponsePacket FileLoader(string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket FileLoader(Session session, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -92,7 +163,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Read in an image file and returns a ResponsePacket with the raw data.
 		/// </summary>
-		private ResponsePacket ImageLoader(string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket ImageLoader(Session session, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -115,13 +186,13 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Load an HTML file, taking into account missing extensions and a file-less IP/domain, which should default to index.html.
 		/// </summary>
-		private ResponsePacket PageLoader(string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket PageLoader(Session session, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
 			if (fullPath == WebsitePath)		// If nothing follows the domain name or IP, then default to loading index.html.
 			{
-				ret = Route(GET, "/index.html", null);
+				ret = Route(session, GET, "/index.html", null);
 			}
 			else
 			{
@@ -142,6 +213,7 @@ namespace Clifton.WebServer
 				else
 				{
 					string text = File.ReadAllText(fullPath);
+					text = Server.postProcess(session, text);			// post processing option, such as adding a validation token.
 					ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(text), ContentType = extInfo.ContentType, Encoding = Encoding.UTF8 };
 				}
 			}

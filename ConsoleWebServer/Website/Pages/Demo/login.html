@@ -1,0 +1,25 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Login</title>
+    <link type="text/css" rel="Stylesheet" href="/CSS/demo.css"/>
+</head>
+<body>
+    <form name="myform" action="/demo/redirect" method="post">
+        <%AntiForgeryToken%>
+        <div class="center-inner top-margin-50">
+            Username:&nbsp;
+            <input name="username"/>
+        </div>
+        <div class="center-inner top-margin-10">
+            Password:&nbsp;
+            <input type="password" name="password"/>
+        </div>
+        <div class="center-inner top-margin-10">
+            <input type="submit" value="Login"/>
+        </div>
+    </form>
+</body>
+</html>

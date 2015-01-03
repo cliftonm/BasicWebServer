@@ -59,11 +59,16 @@
   <ItemGroup>
     <Content Include="Website\CSS\demo.css" />
     <Content Include="Website\favicon.ico" />
+    <Content Include="Website\Pages\Demo\ajax.html" />
     <Content Include="Website\Pages\Demo\buttonclick.html" />
+    <Content Include="Website\Pages\Demo\clicked.html" />
+    <Content Include="Website\Pages\Demo\login.html" />
+    <Content Include="Website\Pages\Demo\redirect.html" />
     <Content Include="Website\Pages\ErrorPages\expiredSession.html" />
     <Content Include="Website\Pages\ErrorPages\fileNotFound.html" />
     <Content Include="Website\Pages\ErrorPages\serverError.html" />
     <Content Include="Website\Pages\ErrorPages\unknownType.html" />
+    <Content Include="Website\Pages\ErrorPages\validationError.html" />
     <Content Include="Website\Pages\index.html" />
     <Content Include="Website\Pages\ErrorPages\notAuthorized.html" />
     <Content Include="Website\Pages\ErrorPages\pageNotFound.html" />

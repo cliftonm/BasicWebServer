@@ -82,6 +82,12 @@ rather dismal, in my opinion.</p>
 <h3>About the Source Code Repository</h3>
 <p>The source code is hosted on GitHub:</p>
 <pre>git clone <a href="https://github.com/cliftonm/BasicWebServer.git">https://github.com/cliftonm/BasicWebServer.git</a></pre>
+<h3>About the Process of this Article</h3>
+<p>Rather than just showing you the final web server, I think it's much more 
+interesting to document, step by step, the construction of the web server, so 
+you can get a feel for how it is built from a blank slate, the design and 
+implementation decisions (good or bad) and the overall process.&nbsp; I hope 
+you, the reader, enjoy this approach.</p>
 <h2>Step 1 - HttpListener</h2>
 <p>The first step of process is to get an <code>HttpListener</code> class working.&nbsp; 
 I opted to go this route rather than the lower level socket route because 
@@ -280,7 +286,8 @@ the console program out of a bin\debug folder, the website path is actually
 
   return websitePath;
 }</pre>
-<p>A little refactoring is need to We pass this in to the web server, which 
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; A little refactoring is need to We pass this in to the web server, which 
 configures the router:</p>
 <pre>public static void Start(string websitePath)
 {
@@ -410,7 +417,8 @@ now returns content located in files.</p>
 
   return ret;
 }</pre>
-<p>We need one final refactoring -- removing our test response and replacing it 
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; We need one final refactoring -- removing our test response and replacing it 
 with the content returned by the router:</p>
 <pre>private static void Respond(HttpListenerResponse response, ResponsePacket resp)
 {
@@ -525,7 +533,8 @@ else
 <p>and so forth.&nbsp; We'll use a callback that the web application can provide 
 for handling errors.&nbsp; This is in the form of the page to which the user 
 should be redirected.</p>
-<p>We then refactor our code to get, from the application, the page to display 
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; We then refactor our code to get, from the application, the page to display 
 on error:</p>
 <pre>ResponsePacket resp = router.Route(verb, path, kvParams);
 
@@ -589,7 +598,8 @@ becomes, by the way, a universal redirect mechanism.)</p>
 {
   resp.Redirect = onError(resp.Error);
 }</pre>
-<p>and we do a little refactoring in the <code>Resond</code> method:</p>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; and we do a little refactoring in the <code>Resond</code> method:</p>
 <pre>private static void Respond(HttpListenerRequest request, HttpListenerResponse response, ResponsePacket resp)
 {
   if (String.IsNullOrEmpty(resp.Redirect))
@@ -668,10 +678,834 @@ do.&nbsp; The handler, in turn, determines whether the browser should be
 redirected to a different page or stay on the current page.&nbsp; Behind the 
 scenes, the handler can do other things, but from the perspective of the web 
 server, that's all that the web server cares about.</p>
-<p>&nbsp;</p>
-<h2>Performance</h2>
-<p>&nbsp;</p>
-<p>&nbsp;&nbsp; </p>
+<h3>Routes</h3>
+<p>We'll begin by adding a basic router.&nbsp; This consists of a <code>Route</code> class:</p>
+<pre>public class Route
+{
+  public string Verb { get; set; }
+  public string Path { get; set; }
+  public Func&lt;Dictionary&lt;string,string&gt;, string&gt; Action { get; set; }
+}</pre>
+<p>Notice the Action property, which is a callback function that passes in the 
+URL parameters (we'll deal with post parameters in a bit) and expects an 
+&quot;optional&quot; redirect URL.</p>
+<p>We add a simple method to add routes to a route table:</p>
+<pre>public void AddRoute(Route route)
+{
+  routes.Add(route);
+}</pre>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; Now we can implement calling application specific handlers, which is a 
+refactor of the Route method:</p>
+<pre>public ResponsePacket Route(string verb, string path, Dictionary&lt;string, string&gt; kvParams)
+{
+  string ext = path.RightOfRightmostOf('.');
+  ExtensionInfo extInfo;
+  ResponsePacket ret = null;
+  verb = verb.ToLower();
+
+  if (extFolderMap.TryGetValue(ext, out extInfo))
+  {
+    string wpath = path.Substring(1).Replace('/', '\\'); // Strip off leading '/' and reformat as with windows path separator.
+    string fullPath = Path.Combine(WebsitePath, wpath);
+
+    Route route = routes.SingleOrDefault(r =&gt; verb == r.Verb.ToLower() &amp;&amp; path == r.Path);
+
+    if (route != null)
+    {
+      // Application has a handler for this route.
+      string redirect = route.Action(kvParams);
+
+      if (String.IsNullOrEmpty(redirect))
+      {
+        // Respond with default content loader.
+        ret = extInfo.Loader(fullPath, ext, extInfo);
+      }
+      else
+      {
+        // Respond with redirect.
+        ret = new ResponsePacket() { Redirect = redirect };
+      }
+    }
+    else
+    {
+      // Attempt default behavior
+      ret = extInfo.Loader(fullPath, ext, extInfo);
+    }
+  }
+  else
+  {
+    ret = new ResponsePacket() { Error = Server.ServerError.UnknownType };
+  }
+
+  return ret;
+}</pre>
+<p>Now let's modify our demo page to make a POST call to the server when we 
+click the button, and we'll redirect to a different page in our handler.&nbsp; 
+Yes, I know this could be handled entirely in the Javascript, but we're 
+demonstrating verb-path handlers here, so we'll implement this behavior on the 
+server-side.</p>
+<p>Let's also add processing the input stream of the request into key-value 
+pairs as well, and add logging of the parameters (both in the URL and any 
+parameters in the input stream) that is part of the request:</p>
+<pre>private static async void StartConnectionListener(HttpListener listener)
+{
+  ...
+  Dictionary&lt;string, string&gt; kvParams = GetKeyValues(parms); // Extract into key-value entries.
+  string data = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding).ReadToEnd();
+  GetKeyValues(data, kvParams);
+  Log(kvParams);
+  ...
+}
+
+private static Dictionary&lt;string, string&gt; GetKeyValues(string data, Dictionary&lt;string, string&gt; kv = null)
+{
+  kv.IfNull(() =&gt; kv = new Dictionary&lt;string, string&gt;());
+  data.If(d =&gt; d.Length &gt; 0, (d) =&gt; d.Split('&amp;').ForEach(keyValue =&gt; kv[keyValue.LeftOf('=')] = keyValue.RightOf('=')));
+
+  return kv;
+}
+
+private static void Log(Dictionary&lt;string, string&gt; kv)
+{
+  kv.ForEach(kvp=&gt;Console.WriteLine(kvp.Key+&quot; : &quot;+kvp.Value));
+}</pre>
+<p>It may be a bad practice to combine URL parameters and postback parameters 
+into a single key-value pair collection, but we'll go with this &quot;simpler&quot; 
+implementation for now.</p>
+<p>We create a new HTML page /demo/redirect:</p>
+<pre>&lt;!DOCTYPE html&gt;
+
+&lt;html lang=&quot;en&quot; xmlns=&quot;http://www.w3.org/1999/xhtml&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;utf-8&quot; /&gt;
+  &lt;title&gt;Redirect Demo&lt;/title&gt;
+  &lt;link type=&quot;text/css&quot; rel=&quot;Stylesheet&quot; href=&quot;/CSS/demo.css&quot;/&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;form name=&quot;myform&quot; action=&quot;/demo/redirect&quot; method=&quot;post&quot;&gt;
+    &lt;div class=&quot;center-inner top-margin-50&quot;&gt;
+      &lt;input type=&quot;submit&quot; class=&quot;button&quot; value=&quot;Redirect Me&quot; id='redirect' name=&quot;redirectButton&quot; /&gt;
+    &lt;/div&gt;
+  &lt;/form&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+<p>And, without doing anything further, let's look at the trace log and the 
+behavior when we click on the button:</p>
+<p>
+<img border="0" src="../../articles/web%20server/redirect1.png" width="439" height="401"></p>
+<p>First we see the GET verb as the page loads, then, clicking on the button, we 
+see the POST with the parameters.&nbsp; The fun thing about writing your own web 
+server is you really get a deeper sense of what is happening behind the scenes, 
+something that is important for people who are new to web development.&nbsp; 
+Note the following in relation to the HTML:</p>
+<p>
+<img border="0" src="../../articles/web%20server/redirect2.png" width="675" height="361"></p>
+<ol>
+	<li>The method verb must be in lowercase.&nbsp; If you use &quot;POST&quot;, Visual 
+	Studio's IDE warns that this is an unrecognized HTML5 verb.</li>
+	<li>Ironically, the verb in the HttpListenerRequest.HttpMethod property is 
+	in uppercase!</li>
+	<li>Note how the action path is the HttpListenerRequest.Url.AbsoluteUri</li>
+	<li>Note the way the post data is packaged.&nbsp; The &quot;key&quot; is the HTML 
+	element's name and the &quot;value&quot; is the HTML element's value.&nbsp; Observe 
+	how whitespaces in the value have been replaced with '+'.</li>
+</ol>
+<p>Now let's register a handler for this verb and path:</p>
+<pre>static void Main(string[] args)
+{
+  string websitePath = GetWebsitePath();
+  Server.onError = ErrorHandler;
+
+  // register a route handler:
+  Server.AddRoute(new Route() { Verb = Router.POST, Path = &quot;/demo/redirect&quot;, Action = RedirectMe });
+
+  Server.Start(websitePath);
+  Console.ReadLine();
+}
+
+public static string RedirectMe(Dictionary&lt;string, string&gt; parms)
+{
+  return &quot;/demo/clicked&quot;;
+}</pre>
+<p>And now, when&nbsp; we click the button, we're redirected:</p>
+<p>
+<img border="0" src="../../articles/web%20server/redirect3.png" width="425" height="365"></p>
+<p>That was easy.&nbsp; </p>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; With a minimal amount of refactoring, we've take care of 
+these three issues:</p>
+<ul>
+	<li>The verb is always assumed to be &quot;get&quot;</li>
+	<li>The application isn't given any option to manipulate the content 
+	(particularly the HTML) after it's been loaded</li>
+	<li>You can't override the routing</li>
+</ul>
+<h2>Step 6 - Authentication and Session Expiration</h2>
+<p>In step 5 above, I implemented a very basic route handler.&nbsp; What we'd 
+like is something a little more sophisticated that can handle very common tasks:</p>
+<ul>
+	<li>making sure the user is authorized to view the page</li>
+	<li>checking if the session has expired</li>
+</ul>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; We'll refactor the handler callbacks above to utilize a Routing class from 
+which we can provide some built-in behaviors as well as allowing the web 
+application developer to replace and/or add their own additional behaviors, such 
+as role-based authentication.</p>
+<h3>Session Management</h3>
+<p>First, let's add a basic <code>Session</code> and <code>SessionManager</code> class:</p>
+<pre>using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Text;
+using System.Threading.Tasks;
+
+using Clifton.ExtensionMethods;
+
+namespace Clifton.WebServer
+{
+  /// &lt;summary&gt;
+  /// Sessions are associated with the client IP.
+  /// &lt;/summary&gt;
+  public class Session
+  {
+    public DateTime LastConnection { get; set; }
+    public bool Authorized { get; set; }
+
+    /// &lt;summary&gt;
+    /// Can be used by controllers to add additional information that needs to persist in the session.
+    /// &lt;/summary&gt;
+    public Dictionary&lt;string, string&gt; Objects { get; set; }
+
+    public Session()
+    {
+      Objects = new Dictionary&lt;string, string&gt;();
+      UpdateLastConnectionTime();
+    }
+
+    public void UpdateLastConnectionTime()
+    {
+      LastConnection = DateTime.Now;
+    }
+
+
+    /// &lt;summary&gt;
+    /// Returns true if the last request exceeds the specified expiration time in seconds.
+    /// &lt;/summary&gt;
+    public bool IsExpired(int expirationInSeconds)
+    {
+      return (DateTime.Now - LastConnection).TotalSeconds &gt; expirationInSeconds;
+    }
+  }
+
+  public class SessionManager
+  {
+    /// &lt;summary&gt;
+    /// Track all sessions.
+    /// &lt;/summary&gt;
+    protected Dictionary&lt;IPAddress, Session&gt; sessionMap = new Dictionary&lt;IPAddress, Session&gt;();
+
+    // TODO: We need a way to remove very old sessions so that the server doesn't accumulate thousands of stale endpoints.
+
+    public SessionManager()
+    {
+      sessionMap = new Dictionary&lt;IPAddress, Session&gt;();
+    }
+
+    /// &lt;summary&gt;
+    /// Creates or returns the existing session for this remote endpoint.
+    /// &lt;/summary&gt;
+    public Session GetSession(IPEndPoint remoteEndPoint)
+    {
+      // The port is always changing on the remote endpoint, so we can only use IP portion.
+      Session session = sessionMap.CreateOrGet(remoteEndPoint.Address);
+
+      return session;
+    }
+  }
+}    </pre>
+<p>The <code>SessionManager</code> manages <code>Session</code> instances associated with the client's 
+endpoint IP.&nbsp; Note the todo--that we need some way of removing sessions at 
+some point, otherwise this list will just keep growing!&nbsp; The Session class 
+contains a couple useful properties for managing the last connection date/time 
+as well as whether the user has been authorized (logged in, whatever) to view 
+&quot;authorized&quot; pages.&nbsp; We also provide a key-value pair dictionary for the 
+web application to persist &quot;objects&quot; associated with keys.&nbsp; Basic, but 
+functional.</p>
+<p>Now, in our listener continuation, we can get the session associated with the 
+endpoint IP:</p>
+<pre>private static async void StartConnectionListener(HttpListener listener)
+{
+  ResponsePacket resp = null;
+
+  // Wait for a connection. Return to caller while we wait.
+  HttpListenerContext context = await listener.GetContextAsync();</pre>
+<pre>  Session session = sessionManager.GetSession(context.Request.RemoteEndPoint);
+  ...
+  resp = router.Route(verb, path, kvParams);
+
+  // Update session last connection after getting the response, 
+  // as the router itself validates session expiration only on pages requiring authentication.
+  session.UpdateLastConnectionTime();</pre>
+<p>That was quite easy!&nbsp; Note how we're updating the last connection time 
+after giving the router (and our handlers) the option to first inspect the last 
+session state.</p>
+<p>
+<img border="0" src="../../articles/web%20server/note.png" width="24" height="32">&nbsp; 
+Because session expiration is intimately associated with authorization, we 
+expect that when a session expires, the <code>Authorized</code> flag will be cleared.</p>
+<h3>Anonymous vs. Authenticated Routes</h3>
+<p>Now let's add some built-in functionality for checking authorization and 
+session expiration.&nbsp; We'll add three classes to our server that the 
+application can use:</p>
+<ul>
+	<li>AnonymousRouteHandler</li>
+	<li>AuthenticatedRouteHandler</li>
+	<li>AuthenticatedExpirableRouteHandler</li>
+</ul>
+<pre>using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Clifton.WebServer
+{
+  /// &lt;summary&gt;
+  /// The base class for route handlers.
+  /// &lt;/summary&gt;
+  public abstract class RouteHandler
+  {
+    protected Func&lt;Session, Dictionary&lt;string, string&gt;, string&gt; handler;
+
+    public RouteHandler(Func&lt;Session, Dictionary&lt;string, string&gt;, string&gt; handler)
+    {
+      this.handler = handler;
+    }
+
+    public abstract string Handle(Session session, Dictionary&lt;string, string&gt; parms);
+  }
+
+  /// &lt;summary&gt;
+  /// Page is always visible.
+  /// &lt;/summary&gt;
+  public class AnonymousRouteHandler : RouteHandler
+  {
+    public AnonymousRouteHandler(Func&lt;Session, Dictionary&lt;string, string&gt;, string&gt; handler)
+        : base(handler)
+    {
+    }
+
+    public override string Handle(Session session, Dictionary&lt;string, string&gt; parms)
+    {
+      return handler(session, parms);
+    }
+  }
+
+  /// &lt;summary&gt;
+  /// Page is visible only to authorized users.
+  /// &lt;/summary&gt;
+  public class AuthenticatedRouteHandler : RouteHandler
+  {
+    public AuthenticatedRouteHandler(Func&lt;Session, Dictionary&lt;string, string&gt;, string&gt; handler)
+        : base(handler)
+    {
+    }
+
+    public override string Handle(Session session, Dictionary&lt;string, string&gt; parms)
+    {
+      string ret;
+
+      if (session.Authorized)
+      {
+        ret = handler(session, parms);
+      }
+      else
+      {
+        ret = Server.onError(Server.ServerError.NotAuthorized);
+      }
+
+      return ret;
+    }
+  }
+
+  /// &lt;summary&gt;
+  /// Page is visible only to authorized users whose session has not expired.
+  /// &lt;/summary&gt;
+  public class AuthenticatedExpirableRouteHandler : AuthenticatedRouteHandler
+  {
+    public AuthenticatedExpirableRouteHandler(Func&lt;Session, Dictionary&lt;string, string&gt;, string&gt; handler)
+        : base(handler)
+    {
+    }
+
+    public override string Handle(Session session, Dictionary&lt;string, string&gt; parms)
+    {
+      string ret;
+
+      if (session.IsExpired(Server.expirationTimeSeconds))
+      {
+        session.Authorized = false;
+        ret = Server.onError(Server.ServerError.ExpiredSession);
+      }
+      else
+      {
+        ret = base.Handle(session, parms);
+      }
+
+      return ret;
+    }
+  }
+}</pre>
+<p>Notice that we also now pass the session instance to the handler.&nbsp; 
+Convenient!</p>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; Next, we refactor the web application routing table to use the <code>RouteHandler</code> 
+derived classes.&nbsp; Our Route class is refactored:</p>
+<pre>public class Route
+{
+  public string Verb { get; set; }
+  public string Path { get; set; }
+  public RouteHandler Handler { get; set; }
+}</pre>
+<p>The session is now passed in to the router and handed over to the route 
+handler:</p>
+<pre>public ResponsePacket Route(Session session, string verb, string path, Dictionary&lt;string, string&gt; kvParams)
+{
+  ...
+  string redirect = route.Handler.Handle(session, kvParams);
+  ...</pre>
+<p>Now we just need to update our web application by specifying the type of 
+handler, for example:</p>
+<p>Server.AddRoute(new Route() { Verb = Router.POST, Path = &quot;/demo/redirect&quot;, 
+Handler=new AnonymousRouteHandler(RedirectMe) });</p>
+<p>and of course, our handler now receives the session instance:</p>
+<pre>public static string RedirectMe(Session session, Dictionary&lt;string, string&gt; parms)
+{
+  return &quot;/demo/clicked&quot;;
+}</pre>
+<p>Let's create a route that requires authorization but the authorization flag is 
+not set in the session:</p>
+<pre>Server.AddRoute(new Route() 
+  { 
+    Verb = Router.POST, 
+    Path = &quot;/demo/redirect&quot;, 
+    Handler=new AuthenticatedRouteHandler(RedirectMe) 
+  });</pre>
+<p>We'll click on the &quot;Redirect Me&quot; button, and note that we get the &quot;not 
+authorized&quot; page:</p>
+<p>
+<img border="0" src="../../articles/web%20server/auth1.png" width="370" height="241"></p>
+<p>We'll do the same thing to test the expiration logic: </p>
+<pre>Server.AddRoute(new Route() 
+  { 
+    Verb = Router.POST, 
+    Path = &quot;/demo/redirect&quot;, 
+    Handler=new AuthenticatedExpirableRouteHandler(RedirectMe) 
+  });</pre>
+<p>and after waiting 60 seconds (configurable in the Server) on the &quot;Redirect 
+Me&quot; page:</p>
+<p>
+<img border="0" src="../../articles/web%20server/exp1.png" width="380" height="270"></p>
+<p>While building a website, I find that authentication/expiration often gets in 
+the way, so I like to spoof the authentication.&nbsp; We can do that by 
+implementing onRequest, which the server calls if it exists:</p>
+<pre>public static Action&lt;Session, HttpListenerContext&gt; onRequest;
+...
+  // Wait for a connection. Return to caller while we wait.
+  HttpListenerContext context = await listener.GetContextAsync();
+  Session session = sessionManager.GetSession(context.Request.RemoteEndPoint);
+  onRequest.IfNotNull(r =&gt; r(session, context));</pre>
+<p>and we can implement our &quot;always authorized and never expiring&quot; session this 
+way:</p>
+<pre>static void Main(string[] args)
+{
+  string websitePath = GetWebsitePath();
+  Server.onError = ErrorHandler;
+
+  // Never expire, always authorize
+  Server.onRequest = (session, context) =&gt;
+  {
+    session.Authorized = true;
+    session.UpdateLastConnectionTime();
+  };
+</pre>
+<h2>Step 7 - AJAX Queries</h2>
+<p>Let's look at an AJAX callback to see if there's anything we need to do to 
+handle that.&nbsp; We'll put together an HTML page with a simple AJAX jQuery 
+script:</p>
+<pre>&lt;html lang=&quot;en&quot; xmlns=&quot;http://www.w3.org/1999/xhtml&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;utf-8&quot; /&gt;
+  &lt;title&gt;AJAX Demo&lt;/title&gt;
+  &lt;script type=&quot;text/javascript&quot; src=&quot;/Scripts/jquery-1.11.2.min.js&quot;&gt;&lt;/script&gt;
+  &lt;link type=&quot;text/css&quot; rel=&quot;Stylesheet&quot; href=&quot;/CSS/demo.css&quot;/&gt;
+
+  &lt;script type=&quot;text/javascript&quot;&gt;
+    $(document).ready(function () {
+      $(&quot;#me&quot;).click(function () {
+        $.ajax({
+          url: this.href,
+          datatype: &quot;json&quot;,
+          async: true,
+          cache: false,
+          type: &quot;put&quot;,
+          data: {
+          number: 5
+          },
+          success: function(data, status)
+          {
+            alert(data);
+          }
+        });
+      });
+    });
+&lt;/script&gt;
+
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class=&quot;center-inner top-margin-50&quot;&gt;
+    &lt;input class=&quot;button&quot; type=&quot;button&quot; value=&quot;AJAX!&quot; id=&quot;me&quot;/&gt;
+  &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+<p>We can see the request being made, but since we don't have a specific handler 
+for this request, we see the server responding with the contents of the page, 
+which is expected.</p>
+<p>
+<img border="0" src="../../articles/web%20server/ajax1.png" width="496" height="391"></p>
+<p>So let's register a route handler:</p>
+<pre>Server.AddRoute(new Route() 
+  { 
+    Verb = Router.PUT, 
+    Path = &quot;/demo/ajax&quot;, 
+    Handler = new AnonymousRouteHandler(AjaxResponder) 
+  });</pre>
+<p>But now we have a problem.&nbsp; Our standard handler expects a redirect, not 
+a data response:</p>
+<pre>public static string AjaxResponder(Session session, Dictionary&lt;string, string&gt; parms)
+{
+  return &quot;what???&quot;;
+}</pre>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; 
+Yes, it's time for another refactoring.&nbsp; The handler needs finer control 
+over the response, and thus should return a <code>ResponsePacket</code>, for 
+example:</p>
+<pre>public static ResponsePacket RedirectMe(Session session, Dictionary&lt;string, string&gt; parms)
+{
+  return Server.Redirect(&quot;/demo/clicked&quot;);
+}
+
+public static ResponsePacket AjaxResponder(Session session, Dictionary&lt;string, string&gt; parms)
+{
+  string data = &quot;You said &quot; + parms[&quot;number&quot;];
+  ResponsePacket ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(data), ContentType = &quot;text&quot; };
+
+  return ret;
+}</pre>
+<p>This change required touching a few places where the handler response used to 
+be a string.&nbsp; The most relevant piece of code changed was in the router 
+itself:</p>
+<pre>Route handler = routes.SingleOrDefault(r =&gt; verb == r.Verb.ToLower() &amp;&amp; path == r.Path);
+
+if (handler != null)
+{
+  // Application has a handler for this route.
+  ResponsePacket handlerResponse = handler.Handler.Handle(session, kvParams);
+
+  if (handlerResponse == null)
+  {
+    // Respond with default content loader.
+    ret = extInfo.Loader(session, fullPath, ext, extInfo);
+  }
+  else
+  {
+    // Respond with redirect.
+    ret = handlerResponse;
+  }
+}</pre>
+<p>but the change took all of about 5 minutes, and here's the result:</p>
+<p>
+<img border="0" src="../../articles/web%20server/ajax2.png" width="383" height="346"></p>
+<p>You can of course return the data in JSON or XML -- that is completely 
+independent of the web server, but you are advised to set the content type 
+correctly:</p>
+<ul>
+	<li>ContentType = &quot;application/json&quot;</li>
+	<li>ContentType = &quot;application/xml&quot;</li>
+</ul>
+<h3>AJAX GET Verb</h3>
+<p>Also note that I used the &quot;PUT&quot; verb, which isn't necessarily appropriate, 
+but I wanted to use it as an example.&nbsp; Look what happens if instead, we use 
+the GET verb:</p>
+<p>
+<img border="0" src="../../articles/web%20server/ajax3.png" width="484" height="458"></p>
+<p>With the GET verb, the parameters are passed as part of the URL!&nbsp; Let's 
+write a handler for this route:</p>
+<pre>Server.AddRoute(new Route() 
+  { 
+    Verb = Router.GET, 
+    Path = &quot;/demo/ajax&quot;, 
+    Handler = new AnonymousRouteHandler(AjaxGetResponder) 
+  });</pre>
+<p>Note that we have to handle the GET verb with both no parameters (the 
+browser's request) and with parameters:</p>
+<p>
+<img border="0" src="../../articles/web%20server/ajax4.png" width="364" height="157"></p>
+<p>Interestingly, we can use the browser now to test the GET response -- note 
+the URL:</p>
+<p>
+<img border="0" src="../../articles/web%20server/ajax5.png" width="292" height="111"></p>
+<h3>What's that Underscore?</h3>
+<p>The underscore parameter is added by jQuery to get around Internet Explorer's 
+caching, and is present only when cache is set to false and you're using the GET 
+verb.&nbsp; Ignore it.</p>
+<h2>Step 8 - Internet vs. Intranet</h2>
+<h3>Local vs. Public IP Addresses</h3>
+<p>Testing a web server locally on a 192.168... IP address is fine, but what 
+happens when you deploy the site?&nbsp; I did this using an Amazon EC2 server 
+and discovered (obivously) that there is a local IP behind the firewall, vs. the 
+public IP.&nbsp; You can see the same thing with your router.&nbsp; We can get 
+the public IP with this code which I found on Stack Overflow (sorry, I the link 
+to give proper credit):</p>
+<pre>public static string GetExternalIP()
+{
+  string externalIP;
+  externalIP = (new WebClient()).DownloadString(&quot;http://checkip.dyndns.org/&quot;);
+  externalIP = (new Regex(@&quot;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}&quot;)).Matches(externalIP)[0].ToString();
+
+  return externalIP;
+}</pre>
+<p>Possibly not the best approach, but it does work.</p>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; The salient thing here is that, when responding with a redirect, the public 
+IP must be used, not the <code>UserHostAddress</code>:</p>
+<pre>if (String.IsNullOrEmpty(publicIP))
+{
+  response.Redirect(&quot;http://&quot; + request.UserHostAddress + resp.Redirect);
+}
+else
+{
+  response.Redirect(&quot;http://&quot; + publicIP + resp.Redirect); 
+}</pre>
+<p>Note that the above code for obtaining the external IP can be a bit slow, and 
+should obviously only be done at server startup.&nbsp; Furthermore, it of course 
+isn't necessary if you have an actual domain name.&nbsp; However, for testing 
+your web application with a host provider without having registered a domain and 
+pointing it to the host provider, the above step is absolutely necessary.</p>
+<h3>Domain Names</h3>
+<p>The above code is fine for testing when you don't have a registered domain 
+name, but obviously we don't want the user to see the IP address whenever we do 
+a redirect.&nbsp; I haven't testing this with an actual domain name, but the 
+guidance here is, simply set <code>publicIP</code> with the actual domain name, 
+for example:</p>
+<pre>Server.publicIP=&quot;www.yourdomain.com&quot;;</pre>
+<h2>Step 9 - So You Want to Modify the HTML Dynamically (and why you ought to)</h2>
+<p>As I said in the introduction, with the capabilities of jQuery, AJAX, 
+Javascript and professional third party components, I can only rarely imagine 
+the need for any complex server-side HTML generation using embedded Ruby or C# 
+along with the markup itself.&nbsp; That said, there is one reason you probably 
+want the server to modify the HTML, and that is to deal with CSRF attacks.</p>
+<h3>Cross-Site Request Forgery (CSRF)</h3>
+<p>
+<a href="http://blog.stevensanderson.com/2008/09/01/prevent-cross-site-request-forgery-csrf-using-aspnet-mvcs-antiforgerytoken-helper/">
+Here's</a> a good explanation of CSRF and why you should care about it.&nbsp; 
+However, do we need a runtime dynamic code compilation to spit out the necessary 
+HTML?&nbsp; No, of course not.&nbsp; So, to deal with CSRF and more generally, 
+server-side HTML manipulation, we'll add the ability for the web application to 
+post-process the HTML before it is returned to the browser.&nbsp; We can do this 
+in the router just before the HTML is encoded into a byte array:</p>
+<pre>string text = File.ReadAllText(fullPath);
+text = Server.postProcess(session, text); // post processing option, such as adding a validation token.</pre>
+<p>The default implementation provided by the server is:</p>
+<pre>public static string validationTokenScript = &quot;&lt;%AntiForgeryToken%&gt;&quot;;
+public static string validationTokenName = &quot;__CSRFToken__&quot;;
+
+private static string DefaultPostProcess(Session session, string html)
+{
+  string ret = html.Replace(validationTokenScript, 
+    &quot;&lt;input name='&quot; + 
+    validationTokenName + 
+    &quot;' type='hidden' value='&quot; + 
+    session.Objects[validationTokenName].ToString() + 
+    &quot; id='#__csrf__'&quot; +
+    &quot;/&gt;&quot;);
+
+  return ret;
+}</pre>
+<p>
+<img border="0" src="../../articles/web%20server/refactor.png" width="32" height="31">&nbsp; 
+Refactoring time!&nbsp; A token is created when a new session is encountered:</p>
+<pre>public Session GetSession(IPEndPoint remoteEndPoint)
+{
+  Session session;
+
+  if (!sessionMap.TryGetValue(remoteEndPoint.Address, out session))
+  {
+    session=new Session();
+    session.Objects[Server.validationTokenName] = Guid.NewGuid().ToString();
+    sessionMap[remoteEndPoint.Address] = session;
+  }
+
+  return session;
+}</pre>
+<p>We can then, by default, implement a CSRF check on non-GET verbs (though we 
+should probably be more selective than that, for the moment I'll just leave it 
+at that):</p>
+<pre>public ResponsePacket Route(Session session, string verb, string path, Dictionary&lt;string, string&gt; kvParams)
+{
+  string ext = path.RightOfRightmostOf('.');
+  ExtensionInfo extInfo;
+  ResponsePacket ret = null;
+  verb = verb.ToLower();
+
+  if (verb != GET)
+  {
+    if (!VerifyCSRF(session, kvParams))
+    {
+      // Don't like multiple return points, but it's so convenient here!
+      return Server.Redirect(Server.onError(Server.ServerError.ValidationError));
+    }
+  }
+  ...
+}
+
+/// &lt;summary&gt;
+/// If a CSRF validation token exists, verify it matches our session value.
+/// If one doesn't exist, issue a warning to the console.
+/// &lt;/summary&gt;
+private bool VerifyCSRF(Session session, Dictionary&lt;string,string&gt; kvParams)
+{
+  bool ret = true;
+  string token;
+
+  if (kvParams.TryGetValue(Server.validationTokenName, out token))
+  {
+    ret = session.Objects[Server.validationTokenName].ToString() == token;
+  }
+  else
+  {
+    Console.WriteLine(&quot;Warning - CSRF token is missing. Consider adding it to the request.&quot;);
+  }
+
+  return ret;
+}</pre>
+<p>So, given this HTML:</p>
+<pre>&lt;!DOCTYPE html&gt;
+
+&lt;html lang=&quot;en&quot; xmlns=&quot;http://www.w3.org/1999/xhtml&quot;&gt;
+&lt;head&gt;
+  &lt;meta charset=&quot;utf-8&quot; /&gt;
+  &lt;title&gt;Login&lt;/title&gt;
+  &lt;link type=&quot;text/css&quot; rel=&quot;Stylesheet&quot; href=&quot;/CSS/demo.css&quot;/&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;form name=&quot;myform&quot; action=&quot;/demo/redirect&quot; method=&quot;post&quot;&gt;
+    &lt;%AntiForgeryToken%&gt;
+    &lt;div class=&quot;center-inner top-margin-50&quot;&gt;
+      Username:&amp;nbsp;
+      &lt;input name=&quot;username&quot;/&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;center-inner top-margin-10&quot;&gt;
+      Password:&amp;nbsp;
+      &lt;input type=&quot;password&quot; name=&quot;password&quot;/&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;center-inner top-margin-10&quot;&gt;
+      &lt;input type=&quot;submit&quot; value=&quot;Login&quot;/&gt;
+    &lt;/div&gt;
+  &lt;/form&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+<p>
+<img border="0" src="../../articles/web%20server/csrf1.png" width="340" height="298"></p>
+<p>We can inspect the source and see our token, for example:</p>
+<pre>&lt;form name=&quot;myform&quot; action=&quot;/demo/redirect&quot; method=&quot;post&quot;&gt;
+  &lt;input name='__CSRFToken__' type='hidden' value='a9161119-de6f-4bb2-8e21-8d089d556c37'/&gt;</pre>
+<p>And in the console window, on the post, we see:</p>
+<p>
+<img border="0" src="../../articles/web%20server/csrf2.png" width="327" height="176"></p>
+<p>If we omit the validation token, we get a warning in the console window:</p>
+<p>
+<img border="0" src="../../articles/web%20server/csrf3.png" width="421" height="190"></p>
+<h3>Other HTML Replacement</h3>
+<p>When you have finer grained control over the server, you can pretty much do 
+anything you want in terms of inventing your own set of token replacements.&nbsp; 
+You could even feed the HTML to different parsers.&nbsp; For example, I really 
+like the <a href="http://slim-lang.com/">Slim language template</a> supported in 
+Ruby on Rails.&nbsp; For example, in the Slim syntax, the login HTML looks like 
+this:</p>
+<pre>doctype html
+html lang=&quot;en&quot; xmlns=&quot;<a href="http://www.w3.org/1999/xhtml">http://www.w3.org/1999/xhtml</a>&quot; 
+  head
+    meta charset=&quot;utf-8&quot; /
+    title Login
+    link href=&quot;/CSS/demo.css&quot; rel=&quot;Stylesheet&quot; type=&quot;text/css&quot; /
+  body
+    form action=&quot;/demo/redirect&quot; method=&quot;post&quot; name=&quot;myform&quot; 
+      | &lt;%AntiForgeryToken%
+      .center-inner.top-margin-50
+        | Username:&amp;nbsp;
+        input name=&quot;username&quot; /
+      .center-inner.top-margin-10
+        | Password:&amp;nbsp;
+        input name=&quot;password&quot; type=&quot;password&quot; /
+      .center-inner.top-margin-10
+        input type=&quot;submit&quot; value=&quot;Login&quot; /</pre>
+<p>This is not available with ASP.NET, Razor, etc., and replacing the Razor 
+parser engine is not trivial.&nbsp; However, we can easily add a Slim to HTML 
+post-process parser to <i>our</i> web server.</p>
+<h2>Issues for Another Day</h2>
+<h3>CSRF and AJAX</h3>
+<p>Because of where we put this check in, we will get this warning on AJAX 
+post/put/deletes as well, which is probably a good idea.&nbsp; Here's what our 
+AJAX demo page looks like passing in the CSRF token:</p>
+<pre>&lt;script type=&quot;text/javascript&quot;&gt;
+  $(document).ready(function () {
+    $(&quot;#me&quot;).click(function () {
+      $.ajax({
+        url: this.href,
+        async: true,
+        cache: false,
+        type: &quot;put&quot;,
+        data: {
+          number: 5,
+          __CSRFToken__: $(&quot;#__csrf__&quot;).val()
+        },
+        success: function(data, status)
+        {
+          alert(data);
+        }
+      });
+    });
+  });
+&lt;/script&gt;</pre>
+<p>This is probably not your typical implementation and it also results in some 
+interesting browser behavior if the validation fails (sending a redirect as an 
+AJAX response is a bit weird.)&nbsp; In any 
+case, this becomes a rabbit hole that I don't want to pursue further and will 
+leave it to the reader to decide whether AJAX requests should have a validation 
+token.&nbsp; If you leave it off, then the console will simply issue a warning.</p>
+<h3>HTTPS</h3>
+<p>Websites should really use HTTPS nowadays, however I'm am going to leave this 
+for another day, possibly a separate article or an addendum at some point to 
+this article.</p>
+<h3>Decoding Parameter Values</h3>
+<p>It would probably be nice to decode parameter values, for example, replacing 
+&quot;+&quot; with whitespace and &quot;%xx&quot; with the appropriate actual character.</p>
+<h3>Chaining Post Processing</h3>
+<p>Post processing the HTML is one of those things ripe for chaining, and is on 
+the todo list.</p>
+<h3>What Else?</h3>
+<p>I'm sure there's other things that could be done!</p>
+<h2>Conclusion</h2>
+<p>What other major issues need to be taken care of?&nbsp; What horrendous 
+mistakes did I make?</p>
+<p>The idea is to keep the web server very small.&nbsp; I have a total of four 
+classes (not including extension methods) and the whole thing is slightly less 
+than 650 lines of code, comments and all.</p>
 
 </body>
 

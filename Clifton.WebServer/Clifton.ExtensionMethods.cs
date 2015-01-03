@@ -13,6 +13,18 @@ namespace Clifton.ExtensionMethods
 {
 	public static class ExtensionMethods
 	{
+		public static bool If<T>(this T v, Func<T, bool> predicate, Action<T> action)
+		{
+			bool ret = predicate(v);
+
+			if (ret)
+			{
+				action(v);
+			}
+
+			return ret;
+		}
+
 		// Type is...
 		public static bool Is<T>(this object obj, Action<T> action)
 		{
