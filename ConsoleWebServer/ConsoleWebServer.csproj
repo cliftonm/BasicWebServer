@@ -48,6 +48,10 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Clifton.Extensions\Clifton.Extensions.csproj">
+      <Project>{3994ca2a-d499-429a-b04a-3e3ed33d357c}</Project>
+      <Name>Clifton.Extensions</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Clifton.WebServer\Clifton.WebServer.csproj">
       <Project>{34ba120b-8d01-4dc0-b841-2ae17a8b5258}</Project>
       <Name>Clifton.WebServer</Name>

@@ -9,7 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Clifton.ExtensionMethods
+namespace Clifton.Extensions
 {
 	public static class ExtensionMethods
 	{
@@ -1222,4 +1222,3 @@ namespace Clifton.ExtensionMethods
 		}
 	}
 }
-

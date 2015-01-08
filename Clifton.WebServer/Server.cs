@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Clifton.ExtensionMethods;
+using Clifton.Extensions;
 
 namespace Clifton.WebServer
 {

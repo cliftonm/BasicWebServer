@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using Clifton.ExtensionMethods;
+using Clifton.Extensions;
 
 namespace Clifton.WebServer
 {

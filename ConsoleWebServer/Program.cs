@@ -4,7 +4,7 @@ using System.Net;
 using System.Reflection;
 using System.Text;
 
-using Clifton.ExtensionMethods;
+using Clifton.Extensions;
 using Clifton.WebServer;
 
 namespace ConsoleWebServer
