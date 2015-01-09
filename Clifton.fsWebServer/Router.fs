@@ -14,10 +14,10 @@ open System.IO
 
 open Clifton.Extensions
 
-let POST = "post"
-let GET = "get"
-let PUT = "put"
-let DELETE = "delete"
+let post = "post"
+let get = "get"
+let put = "put"
+let delete = "delete"
 
 // From: http://stackoverflow.com/questions/13646272/using-functions-before-they-are-declared
 // Since functions are first-class objects in F#, you can pass them around instead -- which presents a much nicer (and still immutable) solution than forward references.
@@ -80,11 +80,29 @@ let defaultExtension (path:string) (ext:string) =
     | "" -> (path + ".html", "html")
     | _  -> (path, ext)
 
-let spoofHtmlPath (websitePath:string) ((path:string), (ext:string)) =
+let spoofHtmlPath (websitePath:string) (path:string, ext:string) =
     match ext with
     | "html" -> (websitePath + "\\Pages" + path.RightOf(websitePath), ext)
     | _ -> (path, ext)
 
+// The default handler only handles GET requests.
+let defaultHandler (path:string, ext:string) (verb:string) =
+    if verb = get
+        then 
+            if File.Exists(path) 
+                then 
+                    match ext with
+                    | "html" -> pageLoader path ext
+                    | "ico"  -> imageLoader path ext
+                    | "png"  -> imageLoader path ext
+                    | "jpg"  -> imageLoader path ext
+                    | "gif"  -> imageLoader path ext
+                    | "bmp"  -> imageLoader path ext
+                    | "css"  -> fileLoader path ext
+                    | "js"   -> fileLoader path ext
+                    | _      -> {defaultResponsePacket with error=RouterError.UnknownType}
+                else {defaultResponsePacket with error=RouterError.FileNotFound}
+        else {defaultResponsePacket with error=RouterError.ServerError}
 
 // Handle the route.  
 // TODO: Allow callbacks to the application
@@ -96,21 +114,4 @@ let route (websitePath:string) (path:string) (verb:string) (kvParams:Map<string,
         | "/"   -> websitePath + @"\index"
         | _     -> websitePath + path.Replace('/', '\\');            // Strip off leading '/' and reformat as with windows path separator.
 
-    let pathAndExt = (defaultExtension wpath extAny) |> (spoofHtmlPath websitePath)
-    let fullPath = fst pathAndExt
-    let ext = snd pathAndExt
-
-    // Now, if the file exists, we're good to go.
-    if File.Exists(fullPath) 
-        then 
-            match ext with
-            | "html" -> pageLoader fullPath ext
-            | "ico"  -> imageLoader fullPath ext
-            | "png"  -> imageLoader fullPath ext
-            | "jpg"  -> imageLoader fullPath ext
-            | "gif"  -> imageLoader fullPath ext
-            | "bmp"  -> imageLoader fullPath ext
-            | "css"  -> fileLoader fullPath ext
-            | "js"   -> fileLoader fullPath ext
-            | _      -> {defaultResponsePacket with error=RouterError.UnknownType}
-        else {defaultResponsePacket with error=RouterError.FileNotFound}
+    (defaultExtension wpath extAny) |> (spoofHtmlPath websitePath)
