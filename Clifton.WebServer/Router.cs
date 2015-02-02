@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-using Clifton.Extensions;
+using Clifton.ExtensionMethods;
 
 namespace Clifton.WebServer
 {
@@ -16,6 +17,13 @@ namespace Clifton.WebServer
 		public string ContentType { get; set; }
 		public Encoding Encoding { get; set; }
 		public Server.ServerError Error { get; set; }
+		public HttpStatusCode StatusCode { get; set; }
+
+		public ResponsePacket()
+		{
+			Error = Server.ServerError.OK;
+			StatusCode = HttpStatusCode.OK;
+		}
 	}
 
 	public class Route
@@ -75,15 +83,6 @@ namespace Clifton.WebServer
 			verb = verb.ToLower();
 			path = path.ToLower();
 
-			if (verb != GET)
-			{
-				if (!VerifyCSRF(session, kvParams))
-				{
-					// Don't like multiple return points, but it's so convenient here!
-					return Server.Redirect(Server.onError(Server.ServerError.ValidationError));
-				}
-			}
-
 			if (extFolderMap.TryGetValue(ext, out extInfo))
 			{
 				string wpath = path.Substring(1).Replace('/', '\\');			// Strip off leading '/' and reformat as with windows path separator.
@@ -123,27 +122,6 @@ namespace Clifton.WebServer
 			{
 				ret = new ResponsePacket() { Error = Server.ServerError.UnknownType };
 			}
-	
-			return ret;
-		}
-
-		/// <summary>
-		/// If a CSRF validation token exists, verify it matches our session value.
-		/// If one doesn't exist, issue a warning to the console.
-		/// </summary>
-		private bool VerifyCSRF(Session session, Dictionary<string,string> kvParams)
-		{
-			bool ret = true;
-			string token;
-
-			if (kvParams.TryGetValue(Server.validationTokenName, out token))
-			{
-				ret = session.Objects[Server.validationTokenName].ToString() == token;
-			}
-			else
-			{
-				Console.WriteLine("Warning - CSRF token is missing.  Consider adding it to the request.");
-			}
 
 			return ret;
 		}
@@ -158,6 +136,7 @@ namespace Clifton.WebServer
 			if (!File.Exists(fullPath))
 			{
 				ret = new ResponsePacket() { Error = Server.ServerError.FileNotFound };
+				Console.WriteLine("!!! File not found: " + fullPath);
 			}
 			else
 			{
@@ -178,6 +157,7 @@ namespace Clifton.WebServer
 			if (!File.Exists(fullPath))
 			{
 				ret = new ResponsePacket() { Error = Server.ServerError.FileNotFound };
+				Console.WriteLine("!!! File not found: " + fullPath);
 			}
 			else
 			{
@@ -217,12 +197,13 @@ namespace Clifton.WebServer
 				if (!File.Exists(fullPath))
 				{
 					ret = new ResponsePacket() { Error = Server.ServerError.PageNotFound };
+					Console.WriteLine("!!! File not found: " + fullPath);
 				}
 				else
 				{
 					string text = File.ReadAllText(fullPath);
 					// This is our built-in CSRF post process function.
-					text = Server.postProcess(session, text);
+					text = Server.postProcess(session, fullPath, text);
 					ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(text), ContentType = extInfo.ContentType, Encoding = Encoding.UTF8 };
 				}
 			}

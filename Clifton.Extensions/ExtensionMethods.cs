@@ -9,7 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Clifton.Extensions
+namespace Clifton.ExtensionMethods
 {
 	public static class ExtensionMethods
 	{
@@ -474,6 +474,11 @@ namespace Clifton.Extensions
 		public static string SingleQuote(this String src)
 		{
 			return "'" + src + "'";
+		}
+
+		public static string Spaced(this String src)
+		{
+			return " " + src + " ";
 		}
 
 		/// <summary>
@@ -1222,3 +1227,4 @@ namespace Clifton.Extensions
 		}
 	}
 }
+

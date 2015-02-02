@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Clifton.Extensions;
+using Clifton.ExtensionMethods;
 
 namespace Clifton.WebServer
 {
@@ -20,11 +20,11 @@ namespace Clifton.WebServer
 	{
 		public static int maxSimultaneousConnections = 20;
 		public static Func<ServerError, string> onError;
-		public static Func<Session, string, string> postProcess = DefaultPostProcess;
+		public static Func<Session, string, string, string> postProcess = DefaultPostProcess;
 		public static Action<Session, HttpListenerContext> onRequest;
 		public static int expirationTimeSeconds = 60;		// default expires in 1 minute.
 		public static string publicIP = String.Empty;
-		public static string validationTokenScript = "<%AntiForgeryToken%>";
+		public static string validationTokenScript = "@AntiForgeryToken@";
 		public static string validationTokenName = "__CSRFToken__";
 
 		public enum ServerError
@@ -37,6 +37,7 @@ namespace Clifton.WebServer
 			ServerError,
 			UnknownType,
 			ValidationError,
+			AjaxError,
 		}
 
 		private static Semaphore sem = new Semaphore(maxSimultaneousConnections, maxSimultaneousConnections);
@@ -49,7 +50,7 @@ namespace Clifton.WebServer
 		public static void Start(string websitePath)
 		{
 			onError.IfNull(() => Console.WriteLine("Warning - the onError callback has not been initialized by the application."));
-			
+
 			// publicIP = GetExternalIP();
 			Console.WriteLine("public IP: " + publicIP);
 			router.WebsitePath = websitePath;
@@ -63,9 +64,15 @@ namespace Clifton.WebServer
 			router.AddRoute(route);
 		}
 
-		public static ResponsePacket Redirect(string url)
+		/// <summary>
+		/// Return a ResponsePacket with the specified URL and an optional (singular) parameter.
+		/// </summary>
+		public static ResponsePacket Redirect(string url, string parm = null)
 		{
-			return new ResponsePacket() { Redirect = url };
+			ResponsePacket ret = new ResponsePacket() { Redirect = url };
+			parm.IfNotNull((p) => ret.Redirect += "?" + p);
+
+			return ret;
 		}
 
 		private static HttpListener InitializeListener(List<IPAddress> localhostIPs)
@@ -78,7 +85,13 @@ namespace Clifton.WebServer
 			{
 				Console.WriteLine("Listening on IP " + "http://" + ip.ToString() + "/");
 				listener.Prefixes.Add("http://" + ip.ToString() + "/");
+				
+				// For testing on a different port:
+				// listener.Prefixes.Add("https://"+ip.ToString()+":8443/");
 			});
+
+			// https:
+			listener.Prefixes.Add("https://*:443/");
 
 			return listener;
 		}
@@ -145,35 +158,92 @@ namespace Clifton.WebServer
 				GetKeyValues(data, kvParams);
 				Log(kvParams);
 
-				resp = router.Route(session, verb, path, kvParams);
-
-				// Update session last connection after getting the response, as the router itself validates session expiration only on pages requiring authentication.
-				session.UpdateLastConnectionTime();
-
-				if (resp.Error != ServerError.OK)
+				if (!VerifyCsrf(session, verb, kvParams))
 				{
-					resp.Redirect = onError(resp.Error);
+					Console.WriteLine("CSRF did not match.  Terminating connection.");
+					context.Response.OutputStream.Close();
+				}
+				else
+				{
+					resp = router.Route(session, verb, path, kvParams);
+
+					// Update session last connection after getting the response, as the router itself validates session expiration only on pages requiring authentication.
+					session.UpdateLastConnectionTime();
+
+					if (resp.Error != ServerError.OK)
+					{
+						resp.Redirect = onError(resp.Error);
+					}
+
+					// TODO: Nested exception: is this best?
+
+					try
+					{
+						Respond(request, context.Response, resp);
+					}
+					catch (Exception reallyBadException)
+					{
+						// The response failed!
+						// TODO: We need to put in some decent logging!
+						Console.WriteLine(reallyBadException.Message);
+					}
 				}
 			}
-			catch(Exception ex)
+			catch (Exception ex)
 			{
 				Console.WriteLine(ex.Message);
 				Console.WriteLine(ex.StackTrace);
 				resp = new ResponsePacket() { Redirect = onError(ServerError.ServerError) };
 			}
-
-			Respond(request, context.Response, resp);
 		}
+
+		/// <summary>
+		/// If a CSRF validation token exists, verify it matches our session value.
+		/// If one doesn't exist, issue a warning to the console.
+		/// </summary>
+		private static bool VerifyCsrf(Session session, string verb, Dictionary<string, string> kvParams)
+		{
+			bool ret = true;
+
+			if (verb.ToLower() != "get")
+			{
+				string token;
+
+				if (kvParams.TryGetValue(Server.validationTokenName, out token))
+				{
+					ret = session[Server.validationTokenName].ToString() == token;
+				}
+				else
+				{
+					Console.WriteLine("Warning - CSRF token is missing.  Consider adding it to the request.");
+				}
+			}
+
+			return ret;
+		}
+
+
 
 		private static void Respond(HttpListenerRequest request, HttpListenerResponse response, ResponsePacket resp)
 		{
+			// Are we redirecting?
 			if (String.IsNullOrEmpty(resp.Redirect))
 			{
-				response.ContentType = resp.ContentType;
-				response.ContentLength64 = resp.Data.Length;
-				response.OutputStream.Write(resp.Data, 0, resp.Data.Length);
-				response.ContentEncoding = resp.Encoding;
-				response.StatusCode = (int)HttpStatusCode.OK;
+				// No redirect.
+				// Do we have a response?
+				if (resp.Data != null)
+				{
+					// Yes we do.
+					response.ContentType = resp.ContentType;
+					response.ContentLength64 = resp.Data.Length;
+					response.OutputStream.Write(resp.Data, 0, resp.Data.Length);
+					response.ContentEncoding = resp.Encoding;
+				}
+
+				// Whether we do or not, no error occurred, so the response code is OK.
+				// For example, we may have just processed an AJAX callback that does not have a data response.
+				// Use the status code in the response packet, so the controller has an opportunity to set the response.
+				response.StatusCode = (int)resp.StatusCode;
 			}
 			else
 			{
@@ -181,11 +251,14 @@ namespace Clifton.WebServer
 
 				if (String.IsNullOrEmpty(publicIP))
 				{
-					response.Redirect("http://" + request.UserHostAddress + resp.Redirect);
+					string redirectUrl = request.Url.Scheme + "://" + request.Url.Host + resp.Redirect;
+					response.Redirect(redirectUrl);
 				}
 				else
 				{
-					response.Redirect("http://" + publicIP + resp.Redirect);					
+					// response.Redirect("http://" + publicIP + resp.Redirect);					
+					string redirectUrl = request.Url.Scheme + "://" + request.Url.Host + resp.Redirect;
+					response.Redirect(redirectUrl);
 				}
 			}
 
@@ -205,7 +278,7 @@ namespace Clifton.WebServer
 		/// </summary>
 		private static void Log(Dictionary<string, string> kv)
 		{
-			kv.ForEach(kvp=>Console.WriteLine(kvp.Key+" : "+kvp.Value));
+			kv.ForEach(kvp => Console.WriteLine(kvp.Key + " : " + Uri.UnescapeDataString(kvp.Value)));
 		}
 
 		/// <summary>
@@ -215,7 +288,7 @@ namespace Clifton.WebServer
 		private static Dictionary<string, string> GetKeyValues(string data, Dictionary<string, string> kv = null)
 		{
 			kv.IfNull(() => kv = new Dictionary<string, string>());
-			data.If(d => d.Length > 0, (d) => d.Split('&').ForEach(keyValue => kv[keyValue.LeftOf('=')] = keyValue.RightOf('=')));
+			data.If(d => d.Length > 0, (d) => d.Split('&').ForEach(keyValue => kv[keyValue.LeftOf('=')] = System.Uri.UnescapeDataString(keyValue.RightOf('='))));
 
 			return kv;
 		}
@@ -229,11 +302,20 @@ namespace Clifton.WebServer
 			return externalIP;
 		}
 
-		private static string DefaultPostProcess(Session session, string html)
+		/// <summary>
+		/// Callable by the application for default handling, therefore must be public.
+		/// </summary>
+		// TODO: Implement this as interface with a base class so the app can call the base class default behavior.
+		public static string DefaultPostProcess(Session session, string fileName, string html)
 		{
-			string ret = html.Replace(validationTokenScript, "<input name="+validationTokenName.SingleQuote()+
-				" type='hidden' value=" + session.Objects[validationTokenName].ToString().SingleQuote()+
+			string ret = html.Replace(validationTokenScript, "<input name=" + validationTokenName.SingleQuote() +
+				" type='hidden' value=" + session[validationTokenName].ToString().SingleQuote() +
 				" id='__csrf__'/>");
+
+			// For when the CSRF is in a knockout model or other JSON that is being posted back to the server.
+			ret = ret.Replace("@CSRF@", session[validationTokenName].ToString().SingleQuote());
+
+			ret = ret.Replace("@CSRFValue@", session[validationTokenName].ToString());
 
 			return ret;
 		}

@@ -5,7 +5,8 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-using Clifton.Extensions;
+using Clifton.ExtensionMethods;
+using Clifton.ValueConverter;
 
 namespace Clifton.WebServer
 {
@@ -20,7 +21,35 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Can be used by controllers to add additional information that needs to persist in the session.
 		/// </summary>
-		public Dictionary<string, object> Objects { get; set; }
+		private Dictionary<string, object> Objects { get; set; }
+
+		// Indexer for accessing session objects.  If an object isn't found, null is returned.
+		public object this[string objectKey]
+		{
+			get
+			{
+				object val=null;
+				Objects.TryGetValue(objectKey, out val);
+
+				return val;
+			}
+
+			set { Objects[objectKey] = value; }
+		}
+
+		// Object collection getter with type conversion.
+		public T GetObject<T>(string objectKey)
+		{
+			object val = null;
+			T ret = default(T);
+
+			if (Objects.TryGetValue(objectKey, out val))
+			{
+				ret = (T)Converter.Convert(val, typeof(T));
+			}
+
+			return ret;
+		}
 
 		public Session()
 		{
@@ -75,7 +104,7 @@ namespace Clifton.WebServer
 			if (!sessionMap.TryGetValue(remoteEndPoint.Address, out session))
 			{
 				session=new Session();
-				session.Objects[Server.validationTokenName] = Guid.NewGuid().ToString();
+				session[Server.validationTokenName] = Guid.NewGuid().ToString();
 				sessionMap[remoteEndPoint.Address] = session;
 			}
 			
