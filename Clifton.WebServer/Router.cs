@@ -31,13 +31,13 @@ namespace Clifton.WebServer
 		public string Verb { get; set; }
 		public string Path { get; set; }
 		public RouteHandler Handler { get; set; }
-		public Func<Session, Dictionary<string, string>, byte[], byte[]> PostProcess { get; set; }
+		public Func<Session, Dictionary<string, string>, string, string> PostProcess { get; set; }
 	}
 
 	internal class ExtensionInfo
 	{
 		public string ContentType { get; set; }
-		public Func<Session, string, string, ExtensionInfo, ResponsePacket> Loader { get; set; }
+		public Func<Route, Session, Dictionary<string, string>, string, string, ExtensionInfo, ResponsePacket> Loader { get; set; }
 	}
 
 	public class Router
@@ -101,21 +101,18 @@ namespace Clifton.WebServer
 					if (handlerResponse == null)
 					{
 						// Respond with default content loader.
-						ret = extInfo.Loader(session, fullPath, ext, extInfo);
+						ret = extInfo.Loader(routeHandler, session, kvParams, fullPath, ext, extInfo);
 					}
 					else
 					{
 						// Respond with redirect.
 						ret = handlerResponse;
 					}
-
-					// If a post process callback exists, call it.
-					routeHandler.PostProcess.IfNotNull((p) => ret.Data = p(session, kvParams, ret.Data));
 				}
 				else
 				{
 					// Attempt default behavior
-					ret = extInfo.Loader(session, fullPath, ext, extInfo);
+					ret = extInfo.Loader(null, session, kvParams, fullPath, ext, extInfo);
 				}
 			}
 			else
@@ -129,7 +126,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Read in what is basically a text file and return a ResponsePacket with the text UTF8 encoded.
 		/// </summary>
-		private ResponsePacket FileLoader(Session session, string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket FileLoader(Route routeHandler, Session session, Dictionary<string, string> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -150,7 +147,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Read in an image file and returns a ResponsePacket with the raw data.
 		/// </summary>
-		private ResponsePacket ImageLoader(Session session, string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket ImageLoader(Route routeHandler, Session session, Dictionary<string, string> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -174,7 +171,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Load an HTML file, taking into account missing extensions and a file-less IP/domain, which should default to index.html.
 		/// </summary>
-		private ResponsePacket PageLoader(Session session, string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket PageLoader(Route routeHandler, Session session, Dictionary<string, string> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -202,8 +199,21 @@ namespace Clifton.WebServer
 				else
 				{
 					string text = File.ReadAllText(fullPath);
-					// This is our built-in CSRF post process function.
+
+					// TODO: We put the route custom post process last because of how content is merged in the application's process,
+					// but this might cause problems if the route post processor adds something that the app's post processor needs to replace.
+					// How do we handle this?  A before/after process?  CSRF tokens are a great example!
+
+					// Do the application global post process replacement.
 					text = Server.postProcess(session, fullPath, text);
+
+					// If a custom post process callback exists, call it.
+					routeHandler.IfNotNull((r) => r.PostProcess.IfNotNull((p) => text = p(session, kvParams, text)));
+
+					// Do our default post process to catch any final CSRF stuff in the fully merged document.
+					text = Server.DefaultPostProcess(session, fullPath, text);
+
+
 					ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(text), ContentType = extInfo.ContentType, Encoding = Encoding.UTF8 };
 				}
 			}
