@@ -16,7 +16,11 @@ namespace Clifton.WebServer
 	public class Session
 	{
 		public DateTime LastConnection { get; set; }
-		public bool Authorized { get; set; }
+
+		/// <summary>
+		/// Is the user authenticated?
+		/// </summary>
+		public bool Authenticated { get; set; }
 
 		/// <summary>
 		/// Can be used by controllers to add additional information that needs to persist in the session.
@@ -37,7 +41,11 @@ namespace Clifton.WebServer
 			set { Objects[objectKey] = value; }
 		}
 
-		// Object collection getter with type conversion.
+		/// <summary>
+		/// Object collection getter with type conversion.
+		/// Note that if the object does not exist in the session, the default value is returned.
+		/// Therefore, session objects like "isAdmin" or "isAuthenticated" should always be true for their "yes" state.
+		/// </summary>
 		public T GetObject<T>(string objectKey)
 		{
 			object val = null;
@@ -75,7 +83,7 @@ namespace Clifton.WebServer
 		/// </summary>
 		public void Expire()
 		{
-			Authorized = false;
+			Authenticated = false;
 			Objects.Remove(Server.validationTokenName);
 		}
 	}

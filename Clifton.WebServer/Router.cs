@@ -31,13 +31,13 @@ namespace Clifton.WebServer
 		public string Verb { get; set; }
 		public string Path { get; set; }
 		public RouteHandler Handler { get; set; }
-		public Func<Session, Dictionary<string, string>, string, string> PostProcess { get; set; }
+		public Func<Session, Dictionary<string, object>, string, string> PostProcess { get; set; }
 	}
 
 	internal class ExtensionInfo
 	{
 		public string ContentType { get; set; }
-		public Func<Route, Session, Dictionary<string, string>, string, string, ExtensionInfo, ResponsePacket> Loader { get; set; }
+		public Func<Route, Session, Dictionary<string, object>, string, string, ExtensionInfo, ResponsePacket> Loader { get; set; }
 	}
 
 	public class Router
@@ -75,7 +75,7 @@ namespace Clifton.WebServer
 			routes.Add(route);
 		}
 
-		public ResponsePacket Route(Session session, string verb, string path, Dictionary<string, string> kvParams)
+		public ResponsePacket Route(Session session, string verb, string path, Dictionary<string, object> kvParams)
 		{
 			string ext = path.RightOfRightmostOf('.');
 			ExtensionInfo extInfo;
@@ -126,7 +126,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Read in what is basically a text file and return a ResponsePacket with the text UTF8 encoded.
 		/// </summary>
-		private ResponsePacket FileLoader(Route routeHandler, Session session, Dictionary<string, string> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket FileLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -147,7 +147,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Read in an image file and returns a ResponsePacket with the raw data.
 		/// </summary>
-		private ResponsePacket ImageLoader(Route routeHandler, Session session, Dictionary<string, string> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket ImageLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -171,7 +171,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Load an HTML file, taking into account missing extensions and a file-less IP/domain, which should default to index.html.
 		/// </summary>
-		private ResponsePacket PageLoader(Route routeHandler, Session session, Dictionary<string, string> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
+		private ResponsePacket PageLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 

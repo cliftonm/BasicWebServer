@@ -13,16 +13,16 @@ namespace Clifton.WebServer
 	/// </summary>
 	public abstract class RouteHandler
 	{
-		protected Func<Session, Dictionary<string, string>, ResponsePacket> handler;
+		protected Func<Session, Dictionary<string, object>, ResponsePacket> handler;
 
-		public RouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler)
+		public RouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler)
 		{
 			this.handler = handler;
 		}
 
-		public abstract ResponsePacket Handle(Session session, Dictionary<string, string> parms);
+		public abstract ResponsePacket Handle(Session session, Dictionary<string, object> parms);
 
-		protected ResponsePacket InvokeHandler(Session session, Dictionary<string, string> parms)
+		protected ResponsePacket InvokeHandler(Session session, Dictionary<string, object> parms)
 		{
 			ResponsePacket ret = null;
 			handler.IfNotNull((h) => ret = h(session, parms));
@@ -36,12 +36,12 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AnonymousRouteHandler : RouteHandler
 	{
-		public AnonymousRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler = null)
+		public AnonymousRouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
 			: base(handler)
 		{
 		}
 
-		public override ResponsePacket Handle(Session session, Dictionary<string, string> parms)
+		public override ResponsePacket Handle(Session session, Dictionary<string, object> parms)
 		{
 			return InvokeHandler(session, parms);
 		}
@@ -52,16 +52,16 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AuthenticatedRouteHandler : RouteHandler
 	{
-		public AuthenticatedRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler = null)
+		public AuthenticatedRouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
 			: base(handler)
 		{
 		}
 
-		public override ResponsePacket Handle(Session session, Dictionary<string, string> parms)
+		public override ResponsePacket Handle(Session session, Dictionary<string, object> parms)
 		{
 			ResponsePacket ret;
 
-			if (session.Authorized)
+			if (session.Authenticated)
 			{
 				ret = InvokeHandler(session, parms);
 			}
@@ -79,12 +79,12 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AuthenticatedExpirableRouteHandler : AuthenticatedRouteHandler
 	{
-		public AuthenticatedExpirableRouteHandler(Func<Session, Dictionary<string, string>, ResponsePacket> handler = null)
+		public AuthenticatedExpirableRouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
 			: base(handler)
 		{
 		}
 
-		public override ResponsePacket Handle(Session session, Dictionary<string, string> parms)
+		public override ResponsePacket Handle(Session session, Dictionary<string, object> parms)
 		{
 			ResponsePacket ret;
 

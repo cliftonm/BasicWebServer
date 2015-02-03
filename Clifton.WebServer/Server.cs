@@ -153,7 +153,7 @@ namespace Clifton.WebServer
 				string path = request.RawUrl.LeftOf("?");			// Only the path, not any of the parameters
 				string verb = request.HttpMethod;					// get, post, delete, etc.
 				string parms = request.RawUrl.RightOf("?");			// Params on the URL itself follow the URL and are separated by a ?
-				Dictionary<string, string> kvParams = GetKeyValues(parms);	// Extract into key-value entries.
+				Dictionary<string, object> kvParams = GetKeyValues(parms);	// Extract into key-value entries.
 				string data = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding).ReadToEnd();
 				GetKeyValues(data, kvParams);
 				Log(kvParams);
@@ -201,17 +201,17 @@ namespace Clifton.WebServer
 		/// If a CSRF validation token exists, verify it matches our session value.
 		/// If one doesn't exist, issue a warning to the console.
 		/// </summary>
-		private static bool VerifyCsrf(Session session, string verb, Dictionary<string, string> kvParams)
+		private static bool VerifyCsrf(Session session, string verb, Dictionary<string, object> kvParams)
 		{
 			bool ret = true;
 
 			if (verb.ToLower() != "get")
 			{
-				string token;
+				object token;
 
 				if (kvParams.TryGetValue(Server.validationTokenName, out token))
 				{
-					ret = session[Server.validationTokenName].ToString() == token;
+					ret = session[Server.validationTokenName].ToString() == token.ToString();
 				}
 				else
 				{
@@ -276,18 +276,18 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Log parameters.
 		/// </summary>
-		private static void Log(Dictionary<string, string> kv)
+		private static void Log(Dictionary<string, object> kv)
 		{
-			kv.ForEach(kvp => Console.WriteLine(kvp.Key + " : " + Uri.UnescapeDataString(kvp.Value)));
+			kv.ForEach(kvp => Console.WriteLine(kvp.Key + " : " + Uri.UnescapeDataString(kvp.Value.ToString())));
 		}
 
 		/// <summary>
 		/// Separate out key-value pairs, delimited by & and into individual key-value instances, separated by =
 		/// Ex input: username=abc&password=123
 		/// </summary>
-		private static Dictionary<string, string> GetKeyValues(string data, Dictionary<string, string> kv = null)
+		private static Dictionary<string, object> GetKeyValues(string data, Dictionary<string, object> kv = null)
 		{
-			kv.IfNull(() => kv = new Dictionary<string, string>());
+			kv.IfNull(() => kv = new Dictionary<string, object>());
 			data.If(d => d.Length > 0, (d) => d.Split('&').ForEach(keyValue => kv[keyValue.LeftOf('=')] = System.Uri.UnescapeDataString(keyValue.RightOf('='))));
 
 			return kv;
