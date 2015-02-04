@@ -79,12 +79,12 @@ namespace Clifton.WebServer
 		}
 
 		/// <summary>
-		/// De-authorize the session and remove the validation token.
+		/// De-authorize the session.
 		/// </summary>
 		public void Expire()
 		{
 			Authenticated = false;
-			Objects.Remove(Server.validationTokenName);
+			// Don't remove the validation token, as we still essentially have a session, we just want the user to log in again.
 		}
 	}
 
