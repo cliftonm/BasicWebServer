@@ -42,11 +42,11 @@ namespace Clifton.ExtensionMethods
 
 		// If the test returns true, execute the action.
 		// Works with objects, not value types.
-		public static void IfTrue<T>(this T obj, Func<T, bool> test, Action action)
+		public static void IfTrue<T>(this T obj, Func<T, bool> test, Action<T> action)
 		{
 			if (test(obj))
 			{
-				action();
+				action(obj);
 			}
 		}
 
