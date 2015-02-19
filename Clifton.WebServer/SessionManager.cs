@@ -38,7 +38,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-using Clifton.ExtensionMethods;
+using Clifton.Extensions;
 using Clifton.ValueConverter;
 
 namespace Clifton.WebServer

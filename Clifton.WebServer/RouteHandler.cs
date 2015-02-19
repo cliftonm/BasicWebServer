@@ -37,12 +37,14 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using Clifton.ExtensionMethods;
+using Clifton.Extensions;
 
 namespace Clifton.WebServer
 {
 	/// <summary>
-	/// The base class for route handlers.
+	/// The base class for route handlers.  If not for being abstract, this would be the equivalent of an anonymous handler,
+	/// but we want to enforce an explicit declaration of that so the developer doesn't accidentally use RouteHandler without
+	/// realizing that it's an anonymous, unauthenticated, no session timeout check, handler.  Defensive Programming!
 	/// </summary>
 	public abstract class RouteHandler
 	{
@@ -53,7 +55,15 @@ namespace Clifton.WebServer
 			this.handler = handler;
 		}
 
-		public abstract ResponsePacket Handle(Session session, Dictionary<string, object> parms);
+		public virtual ResponsePacket Handle(Session session, Dictionary<string, object> parms)
+		{
+			return InvokeHandler(session, parms);
+		}
+
+		/// <summary>
+		/// CanHandle is used only for determining which handler, in a multiple handler for a single route, can actually handle to session and params for that route.
+		/// </summary>
+		public virtual bool CanHandle(Session session, Dictionary<string, object> parms) { return true; }
 
 		protected ResponsePacket InvokeHandler(Session session, Dictionary<string, object> parms)
 		{
@@ -72,11 +82,6 @@ namespace Clifton.WebServer
 		public AnonymousRouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
 			: base(handler)
 		{
-		}
-
-		public override ResponsePacket Handle(Session session, Dictionary<string, object> parms)
-		{
-			return InvokeHandler(session, parms);
 		}
 	}
 
@@ -134,4 +139,5 @@ namespace Clifton.WebServer
 			return ret;
 		}
 	}
+
 }

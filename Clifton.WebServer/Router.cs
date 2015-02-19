@@ -39,7 +39,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-using Clifton.ExtensionMethods;
+using Clifton.Extensions;
 
 namespace Clifton.WebServer
 {
@@ -63,8 +63,23 @@ namespace Clifton.WebServer
 	{
 		public string Verb { get; set; }
 		public string Path { get; set; }
+
+		/// <summary>
+		/// Usually a route has a single handler, so we can just set the Handler property.
+		/// </summary>
 		public RouteHandler Handler { get; set; }
+
+		/// <summary>
+		/// Sometimes we need a collection of handlers for a single route because the handler is determined by the data, not the url.
+		/// </summary>
+		public List<RouteHandler> Handlers { get; set; }
+
 		public Func<Session, Dictionary<string, object>, string, string> PostProcess { get; set; }
+
+		public Route()
+		{
+			Handlers = new List<RouteHandler>();
+		}
 	}
 
 	internal class ExtensionInfo
@@ -130,6 +145,21 @@ namespace Clifton.WebServer
 
 					// If a handler exists:
 					routeHandler.Handler.IfNotNull((h) => handlerResponse = h.Handle(session, kvParams));
+
+					// If multiple handlers exist, see which one, if any, is willing to handle the request.
+					// We stop after the first handler.
+					// This behavior is useful for web services or other types of routes where the data determines the route, not the URL.
+					if (routeHandler.Handlers.Count > 0)
+					{
+						foreach (RouteHandler h in routeHandler.Handlers)
+						{
+							if (h.CanHandle(session, kvParams))
+							{
+								handlerResponse = h.Handle(session, kvParams);
+								break;
+							}
+						}
+					}
 
 					if (handlerResponse == null)
 					{

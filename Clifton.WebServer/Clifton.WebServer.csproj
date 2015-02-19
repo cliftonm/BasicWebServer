@@ -50,14 +50,13 @@
     <Compile Include="Server.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SessionManager.cs" />
-    <Compile Include="Utils.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Clifton.Extensions\Clifton.Extensions.csproj">
-      <Project>{3994ca2a-d499-429a-b04a-3e3ed33d357c}</Project>
+    <ProjectReference Include="..\..\ncompass\cashless-transport\Clifton.Extensions\Clifton.Extensions.csproj">
+      <Project>{f4c2934b-1304-4105-b4ef-be9b0c6bf350}</Project>
       <Name>Clifton.Extensions</Name>
     </ProjectReference>
   </ItemGroup>

@@ -42,7 +42,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Clifton.ExtensionMethods;
+using Clifton.Extensions;
 
 namespace Clifton.WebServer
 {
@@ -80,7 +80,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Starts the web server.
 		/// </summary>
-		public static void Start(string websitePath)
+		public static void Start(string websitePath, int port = 80)
 		{
 			onError.IfNull(() => Console.WriteLine("Warning - the onError callback has not been initialized by the application."));
 
@@ -88,7 +88,7 @@ namespace Clifton.WebServer
 			Console.WriteLine("public IP: " + publicIP);
 			router.WebsitePath = websitePath;
 			List<IPAddress> localHostIPs = GetLocalHostIPs();
-			HttpListener listener = InitializeListener(localHostIPs);
+			HttpListener listener = InitializeListener(localHostIPs, port);
 			Start(listener);
 		}
 
@@ -108,16 +108,19 @@ namespace Clifton.WebServer
 			return ret;
 		}
 
-		private static HttpListener InitializeListener(List<IPAddress> localhostIPs)
+		private static HttpListener InitializeListener(List<IPAddress> localhostIPs, int port)
 		{
 			HttpListener listener = new HttpListener();
-			listener.Prefixes.Add("http://localhost/");
+			string url = UrlWithPort("http://localhost", port);
+			Console.WriteLine("Listening on " + url);
+			listener.Prefixes.Add(url);
 
 			// Listen to IP address as well.
 			localhostIPs.ForEach(ip =>
 			{
-				Console.WriteLine("Listening on IP " + "http://" + ip.ToString() + "/");
-				listener.Prefixes.Add("http://" + ip.ToString() + "/");
+				url = UrlWithPort("http://" + ip.ToString(), port);
+				Console.WriteLine("Listening on "+url);
+				listener.Prefixes.Add(url);
 				
 				// For testing on a different port:
 				// listener.Prefixes.Add("https://"+ip.ToString()+":8443/");
@@ -128,6 +131,21 @@ namespace Clifton.WebServer
 			// listener.Prefixes.Add("https://*:443/");
 
 			return listener;
+		}
+
+		/// <summary>
+		/// Returns the url appended with a / for port 80, otherwise, the [url]:[port]/ if the port is not 80.
+		/// </summary>
+		private static string UrlWithPort(string url, int port)
+		{
+			string ret = url + "/";
+
+			if (port != 80)
+			{
+				ret = url + ":" + port.ToString() + "/";
+			}
+
+			return ret;
 		}
 
 		/// <summary>
