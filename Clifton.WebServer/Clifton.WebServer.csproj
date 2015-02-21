@@ -44,7 +44,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Converter.cs" />
     <Compile Include="RouteHandler.cs" />
     <Compile Include="Router.cs" />
     <Compile Include="Server.cs" />
@@ -58,6 +57,10 @@
     <ProjectReference Include="..\..\ncompass\cashless-transport\Clifton.Extensions\Clifton.Extensions.csproj">
       <Project>{f4c2934b-1304-4105-b4ef-be9b0c6bf350}</Project>
       <Name>Clifton.Extensions</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\ncompass\cashless-transport\Clifton.Utils\Clifton.Utils.csproj">
+      <Project>{3cc02881-b71b-4e25-8189-b2a2f37c9491}</Project>
+      <Name>Clifton.Utils</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -39,7 +39,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 using Clifton.Extensions;
-using Clifton.ValueConverter;
+using Clifton.Utils;
 
 namespace Clifton.WebServer
 {
@@ -123,6 +123,8 @@ namespace Clifton.WebServer
 
 	public class SessionManager
 	{
+		protected Server server;
+
 		/// <summary>
 		/// Track all sessions.
 		/// </summary>
@@ -130,8 +132,9 @@ namespace Clifton.WebServer
 
 		// TODO: We need a way to remove very old sessions so that the server doesn't accumulate thousands of stale endpoints.
 
-		public SessionManager()
+		public SessionManager(Server server)
 		{
+			this.server = server;
 			sessionMap = new Dictionary<IPAddress, Session>();
 		}
 
@@ -145,7 +148,7 @@ namespace Clifton.WebServer
 			if (!sessionMap.TryGetValue(remoteEndPoint.Address, out session))
 			{
 				session=new Session();
-				session[Server.validationTokenName] = Guid.NewGuid().ToString();
+				session[server.ValidationTokenName] = Guid.NewGuid().ToString();
 				sessionMap[remoteEndPoint.Address] = session;
 			}
 			

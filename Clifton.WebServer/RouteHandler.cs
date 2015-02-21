@@ -48,10 +48,12 @@ namespace Clifton.WebServer
 	/// </summary>
 	public abstract class RouteHandler
 	{
+		protected Server server;
 		protected Func<Session, Dictionary<string, object>, ResponsePacket> handler;
 
-		public RouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler)
+		public RouteHandler(Server server, Func<Session, Dictionary<string, object>, ResponsePacket> handler)
 		{
+			this.server = server;
 			this.handler = handler;
 		}
 
@@ -79,8 +81,8 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AnonymousRouteHandler : RouteHandler
 	{
-		public AnonymousRouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
-			: base(handler)
+		public AnonymousRouteHandler(Server server, Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
+			: base(server, handler)
 		{
 		}
 	}
@@ -90,8 +92,8 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AuthenticatedRouteHandler : RouteHandler
 	{
-		public AuthenticatedRouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
-			: base(handler)
+		public AuthenticatedRouteHandler(Server server, Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
+			: base(server, handler)
 		{
 		}
 
@@ -105,7 +107,7 @@ namespace Clifton.WebServer
 			}
 			else
 			{
-				ret = Server.Redirect(Server.onError(Server.ServerError.NotAuthorized));
+				ret = server.Redirect(server.OnError(Server.ServerError.NotAuthorized));
 			}
 
 			return ret;
@@ -117,8 +119,8 @@ namespace Clifton.WebServer
 	/// </summary>
 	public class AuthenticatedExpirableRouteHandler : AuthenticatedRouteHandler
 	{
-		public AuthenticatedExpirableRouteHandler(Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
-			: base(handler)
+		public AuthenticatedExpirableRouteHandler(Server server, Func<Session, Dictionary<string, object>, ResponsePacket> handler = null)
+			: base(server, handler)
 		{
 		}
 
@@ -126,10 +128,10 @@ namespace Clifton.WebServer
 		{
 			ResponsePacket ret;
 
-			if (session.IsExpired(Server.expirationTimeSeconds))
+			if (session.IsExpired(server.ExpirationTimeSeconds))
 			{
 				session.Expire();
-				ret = Server.Redirect(Server.onError(Server.ServerError.ExpiredSession));
+				ret = server.Redirect(server.OnError(Server.ServerError.ExpiredSession));
 			}
 			else
 			{

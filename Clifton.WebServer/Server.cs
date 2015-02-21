@@ -49,17 +49,8 @@ namespace Clifton.WebServer
 	/// <summary>
 	/// A lean and mean web server.
 	/// </summary>
-	public static class Server
+	public class Server
 	{
-		public static int maxSimultaneousConnections = 20;
-		public static Func<ServerError, string> onError;
-		public static Func<Session, string, string, string> postProcess = DefaultPostProcess;
-		public static Action<Session, HttpListenerContext> onRequest;
-		public static int expirationTimeSeconds = 60;		// default expires in 1 minute.
-		public static string publicIP = String.Empty;
-		public static string validationTokenScript = "@AntiForgeryToken@";
-		public static string validationTokenName = "__CSRFToken__";
-
 		public enum ServerError
 		{
 			OK,
@@ -73,26 +64,51 @@ namespace Clifton.WebServer
 			AjaxError,
 		}
 
-		private static Semaphore sem = new Semaphore(maxSimultaneousConnections, maxSimultaneousConnections);
-		private static Router router = new Router();
-		private static SessionManager sessionManager = new SessionManager();
+		public Func<Session, string, string, string> PostProcess { get; set; }
+		public Func<ServerError, string> OnError { get; set; }
+		public int MaxSimultaneousConnections { get; set; }
+		public int ExpirationTimeSeconds { get; set; }
+		public string ValidationTokenName { get; set; }
+
+		protected Action<Session, HttpListenerContext> onRequest;
+		protected string protectedIP = String.Empty;
+		protected string validationTokenScript = "@AntiForgeryToken@";
+		protected string publicIP = null;
+
+		protected Semaphore sem;
+		protected Router router;
+		protected SessionManager sessionManager;
+
+		public Server()
+		{
+			MaxSimultaneousConnections = 20;			// TODO: This needs to be externally settable before initializing the semaphore.
+			ExpirationTimeSeconds = 60;					// default expires in 1 minute.
+			ValidationTokenName = "__CSRFToken__";
+
+
+			sem = new Semaphore(MaxSimultaneousConnections, MaxSimultaneousConnections);
+			router = new Router(this);
+			sessionManager = new SessionManager(this);
+			PostProcess = DefaultPostProcess;
+		}
 
 		/// <summary>
 		/// Starts the web server.
 		/// </summary>
-		public static void Start(string websitePath, int port = 80)
+		public void Start(string websitePath, int port = 80)
 		{
-			onError.IfNull(() => Console.WriteLine("Warning - the onError callback has not been initialized by the application."));
+			OnError.IfNull(() => Console.WriteLine("Warning - the onError callback has not been initialized by the application."));
 
 			// publicIP = GetExternalIP();
-			Console.WriteLine("public IP: " + publicIP);
+			// Console.WriteLine("public IP: " + publicIP);
+
 			router.WebsitePath = websitePath;
 			List<IPAddress> localHostIPs = GetLocalHostIPs();
 			HttpListener listener = InitializeListener(localHostIPs, port);
 			Start(listener);
 		}
 
-		public static void AddRoute(Route route)
+		public void AddRoute(Route route)
 		{
 			router.AddRoute(route);
 		}
@@ -100,7 +116,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Return a ResponsePacket with the specified URL and an optional (singular) parameter.
 		/// </summary>
-		public static ResponsePacket Redirect(string url, string parm = null)
+		public ResponsePacket Redirect(string url, string parm = null)
 		{
 			ResponsePacket ret = new ResponsePacket() { Redirect = url };
 			parm.IfNotNull((p) => ret.Redirect += "?" + p);
@@ -108,7 +124,7 @@ namespace Clifton.WebServer
 			return ret;
 		}
 
-		private static HttpListener InitializeListener(List<IPAddress> localhostIPs, int port)
+		private HttpListener InitializeListener(List<IPAddress> localhostIPs, int port)
 		{
 			HttpListener listener = new HttpListener();
 			string url = UrlWithPort("http://localhost", port);
@@ -136,7 +152,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Returns the url appended with a / for port 80, otherwise, the [url]:[port]/ if the port is not 80.
 		/// </summary>
-		private static string UrlWithPort(string url, int port)
+		private string UrlWithPort(string url, int port)
 		{
 			string ret = url + "/";
 
@@ -151,7 +167,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Returns list of IP addresses assigned to localhost network devices, such as hardwired ethernet, wireless, etc.
 		/// </summary>
-		private static List<IPAddress> GetLocalHostIPs()
+		private List<IPAddress> GetLocalHostIPs()
 		{
 			IPHostEntry host;
 			host = Dns.GetHostEntry(Dns.GetHostName());
@@ -163,7 +179,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Begin listening to connections on a separate worker thread.
 		/// </summary>
-		private static void Start(HttpListener listener)
+		private void Start(HttpListener listener)
 		{
 			listener.Start();
 			Task.Run(() => RunServer(listener));
@@ -173,7 +189,7 @@ namespace Clifton.WebServer
 		/// Start awaiting for connections, up to the "maxSimultaneousConnections" value.
 		/// This code runs in a separate thread.
 		/// </summary>
-		private static void RunServer(HttpListener listener)
+		private void RunServer(HttpListener listener)
 		{
 			while (true)
 			{
@@ -185,7 +201,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Await connections.
 		/// </summary>
-		private static async void StartConnectionListener(HttpListener listener)
+		private async void StartConnectionListener(HttpListener listener)
 		{
 			ResponsePacket resp = null;
 
@@ -224,7 +240,7 @@ namespace Clifton.WebServer
 
 					if (resp.Error != ServerError.OK)
 					{
-						resp.Redirect = onError(resp.Error);
+						resp.Redirect = OnError(resp.Error);
 					}
 
 					// TODO: Nested exception: is this best?
@@ -245,7 +261,7 @@ namespace Clifton.WebServer
 			{
 				Console.WriteLine(ex.Message);
 				Console.WriteLine(ex.StackTrace);
-				resp = new ResponsePacket() { Redirect = onError(ServerError.ServerError) };
+				resp = new ResponsePacket() { Redirect = OnError(ServerError.ServerError) };
 			}
 		}
 
@@ -253,7 +269,7 @@ namespace Clifton.WebServer
 		/// If a CSRF validation token exists, verify it matches our session value.
 		/// If one doesn't exist, issue a warning to the console.
 		/// </summary>
-		private static bool VerifyCsrf(Session session, string verb, Dictionary<string, object> kvParams)
+		private bool VerifyCsrf(Session session, string verb, Dictionary<string, object> kvParams)
 		{
 			bool ret = true;
 
@@ -261,9 +277,9 @@ namespace Clifton.WebServer
 			{
 				object token;
 
-				if (kvParams.TryGetValue(Server.validationTokenName, out token))
+				if (kvParams.TryGetValue(ValidationTokenName, out token))
 				{
-					ret = session[Server.validationTokenName].ToString() == token.ToString();
+					ret = session[ValidationTokenName].ToString() == token.ToString();
 				}
 				else
 				{
@@ -276,7 +292,7 @@ namespace Clifton.WebServer
 
 
 
-		private static void Respond(HttpListenerRequest request, HttpListenerResponse response, ResponsePacket resp)
+		private void Respond(HttpListenerRequest request, HttpListenerResponse response, ResponsePacket resp)
 		{
 			// Are we redirecting?
 			if (String.IsNullOrEmpty(resp.Redirect))
@@ -320,7 +336,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Log requests.
 		/// </summary>
-		private static void Log(HttpListenerRequest request)
+		private void Log(HttpListenerRequest request)
 		{
 			Console.WriteLine(request.RemoteEndPoint + " " + request.HttpMethod + " /" + request.Url.AbsoluteUri.RightOf('/', 3));
 		}
@@ -328,7 +344,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Log parameters.
 		/// </summary>
-		private static void Log(Dictionary<string, object> kv)
+		private void Log(Dictionary<string, object> kv)
 		{
 			kv.ForEach(kvp => Console.WriteLine(kvp.Key + " : " + Uri.UnescapeDataString(kvp.Value.ToString())));
 		}
@@ -337,7 +353,7 @@ namespace Clifton.WebServer
 		/// Separate out key-value pairs, delimited by & and into individual key-value instances, separated by =
 		/// Ex input: username=abc&password=123
 		/// </summary>
-		private static Dictionary<string, object> GetKeyValues(string data, Dictionary<string, object> kv = null)
+		private Dictionary<string, object> GetKeyValues(string data, Dictionary<string, object> kv = null)
 		{
 			kv.IfNull(() => kv = new Dictionary<string, object>());
 			data.If(d => d.Length > 0, (d) => d.Split('&').ForEach(keyValue => kv[keyValue.LeftOf('=')] = System.Uri.UnescapeDataString(keyValue.RightOf('='))));
@@ -345,7 +361,7 @@ namespace Clifton.WebServer
 			return kv;
 		}
 
-		private static string GetExternalIP()
+		private string GetExternalIP()
 		{
 			string externalIP;
 			externalIP = (new WebClient()).DownloadString("http://checkip.dyndns.org/");
@@ -358,16 +374,16 @@ namespace Clifton.WebServer
 		/// Callable by the application for default handling, therefore must be public.
 		/// </summary>
 		// TODO: Implement this as interface with a base class so the app can call the base class default behavior.
-		public static string DefaultPostProcess(Session session, string fileName, string html)
+		public string DefaultPostProcess(Session session, string fileName, string html)
 		{
-			string ret = html.Replace(validationTokenScript, "<input name=" + validationTokenName.SingleQuote() +
-				" type='hidden' value=" + session[validationTokenName].ToString().SingleQuote() +
+			string ret = html.Replace(validationTokenScript, "<input name=" + ValidationTokenName.SingleQuote() +
+				" type='hidden' value=" + session[ValidationTokenName].ToString().SingleQuote() +
 				" id='__csrf__'/>");
 
 			// For when the CSRF is in a knockout model or other JSON that is being posted back to the server.
-			ret = ret.Replace("@CSRF@", session[validationTokenName].ToString().SingleQuote());
+			ret = ret.Replace("@CSRF@", session[ValidationTokenName].ToString().SingleQuote());
 
-			ret = ret.Replace("@CSRFValue@", session[validationTokenName].ToString());
+			ret = ret.Replace("@CSRFValue@", session[ValidationTokenName].ToString());
 
 			return ret;
 		}

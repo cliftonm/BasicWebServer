@@ -82,7 +82,7 @@ namespace Clifton.WebServer
 		}
 	}
 
-	internal class ExtensionInfo
+	public class ExtensionInfo
 	{
 		public string ContentType { get; set; }
 		public Func<Route, Session, Dictionary<string, object>, string, string, ExtensionInfo, ResponsePacket> Loader { get; set; }
@@ -97,11 +97,13 @@ namespace Clifton.WebServer
 		public const string PUT = "put";
 		public const string DELETE = "delete";
 
-		private Dictionary<string, ExtensionInfo> extFolderMap;
-		private List<Route> routes;
+		protected Dictionary<string, ExtensionInfo> extFolderMap;
+		protected List<Route> routes;
+		protected Server server;
 
-		public Router()
+		public Router(Server server)
 		{
+			this.server = server;
 			routes = new List<WebServer.Route>();
 
 			extFolderMap = new Dictionary<string, ExtensionInfo>() 
@@ -189,7 +191,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Read in what is basically a text file and return a ResponsePacket with the text UTF8 encoded.
 		/// </summary>
-		private ResponsePacket FileLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
+		protected ResponsePacket FileLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -210,7 +212,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Read in an image file and returns a ResponsePacket with the raw data.
 		/// </summary>
-		private ResponsePacket ImageLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
+		protected ResponsePacket ImageLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -234,7 +236,7 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Load an HTML file, taking into account missing extensions and a file-less IP/domain, which should default to index.html.
 		/// </summary>
-		private ResponsePacket PageLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
+		protected ResponsePacket PageLoader(Route routeHandler, Session session, Dictionary<string, object> kvParams, string fullPath, string ext, ExtensionInfo extInfo)
 		{
 			ResponsePacket ret;
 
@@ -268,13 +270,13 @@ namespace Clifton.WebServer
 					// How do we handle this?  A before/after process?  CSRF tokens are a great example!
 
 					// Do the application global post process replacement.
-					text = Server.postProcess(session, fullPath, text);
+					text = server.PostProcess(session, fullPath, text);
 
 					// If a custom post process callback exists, call it.
 					routeHandler.IfNotNull((r) => r.PostProcess.IfNotNull((p) => text = p(session, kvParams, text)));
 
 					// Do our default post process to catch any final CSRF stuff in the fully merged document.
-					text = Server.DefaultPostProcess(session, fullPath, text);
+					text = server.DefaultPostProcess(session, fullPath, text);
 
 
 					ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(text), ContentType = extInfo.ContentType, Encoding = Encoding.UTF8 };
