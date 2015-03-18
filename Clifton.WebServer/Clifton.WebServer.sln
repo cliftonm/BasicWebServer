@@ -11,6 +11,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "fsConsoleWebServer", "fsCon
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Clifton.Extensions", "..\Clifton.Extensions\Clifton.Extensions.csproj", "{3994CA2A-D499-429A-B04A-3E3ED33D357C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Clifton.Utils", "..\Clifton.Utils\Clifton.Utils.csproj", "{3CC02881-B71B-4E25-8189-B2A2F37C9491}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -37,6 +39,10 @@ Global
 		{3994CA2A-D499-429A-B04A-3E3ED33D357C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3994CA2A-D499-429A-B04A-3E3ED33D357C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3994CA2A-D499-429A-B04A-3E3ED33D357C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3CC02881-B71B-4E25-8189-B2A2F37C9491}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3CC02881-B71B-4E25-8189-B2A2F37C9491}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3CC02881-B71B-4E25-8189-B2A2F37C9491}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3CC02881-B71B-4E25-8189-B2A2F37C9491}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

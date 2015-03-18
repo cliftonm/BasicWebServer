@@ -66,11 +66,11 @@ namespace Clifton.WebServer
 
 		public Func<Session, string, string, string> PostProcess { get; set; }
 		public Func<ServerError, string> OnError { get; set; }
+		public Action<Session, HttpListenerContext> OnRequest;
 		public int MaxSimultaneousConnections { get; set; }
 		public int ExpirationTimeSeconds { get; set; }
 		public string ValidationTokenName { get; set; }
 
-		protected Action<Session, HttpListenerContext> onRequest;
 		protected string protectedIP = String.Empty;
 		protected string validationTokenScript = "@AntiForgeryToken@";
 		protected string publicIP = null;
@@ -219,7 +219,7 @@ namespace Clifton.WebServer
 			// Wait for a connection.  Return to caller while we wait.
 			HttpListenerContext context = await listener.GetContextAsync();
 			Session session = sessionManager.GetSession(context.Request.RemoteEndPoint);
-			onRequest.IfNotNull(r => r(session, context));
+			OnRequest.IfNotNull(r => r(session, context));
 
 			// Release the semaphore so that another listener can be immediately started up.
 			sem.Release();

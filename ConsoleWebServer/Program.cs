@@ -11,44 +11,47 @@ namespace ConsoleWebServer
 {
 	class Program
 	{
+		public static Server server;
+
 		static void Main(string[] args)
 		{
 			string websitePath = GetWebsitePath();
-			Server.onError = ErrorHandler;
-			Server.onRequest = (session, context) =>
+			server = new Server();
+			server.OnError = ErrorHandler;
+			server.OnRequest = (session, context) =>
 			{
-				session.Authorized = true;
+				session.Authenticated = true;
 				session.UpdateLastConnectionTime();
 			};
 
-			Server.AddRoute(new Route() { Verb = Router.POST, Path = "/demo/redirect", Handler=new AuthenticatedExpirableRouteHandler(RedirectMe) });
-			Server.AddRoute(new Route() { Verb = Router.PUT, Path = "/demo/ajax", Handler = new AnonymousRouteHandler(AjaxResponder) });
-			Server.AddRoute(new Route() { Verb = Router.GET, Path = "/demo/ajax", Handler = new AnonymousRouteHandler(AjaxGetResponder) });
+			server.AddRoute(new Route() { Verb = Router.POST, Path = "/demo/redirect", Handler=new AuthenticatedExpirableRouteHandler(server, RedirectMe) });
+			server.AddRoute(new Route() { Verb = Router.PUT, Path = "/demo/ajax", Handler = new AnonymousRouteHandler(server, AjaxResponder) });
+			server.AddRoute(new Route() { Verb = Router.GET, Path = "/demo/ajax", Handler = new AnonymousRouteHandler(server, AjaxGetResponder) });
 
-			Server.Start(websitePath);
+			server.Start(websitePath);
 			Console.ReadLine();
 		}
 
-		public static ResponsePacket RedirectMe(Session session, Dictionary<string, string> parms)
+		public static ResponsePacket RedirectMe(Session session, Dictionary<string, object> parms)
 		{
-			return Server.Redirect("/demo/clicked");
+			return server.Redirect("/demo/clicked");
 		}
 
-		public static ResponsePacket AjaxResponder(Session session, Dictionary<string, string> parms)
+		public static ResponsePacket AjaxResponder(Session session, Dictionary<string, object> parms)
 		{
-			string data = "You said " + parms["number"];
+			string data = "You said " + parms["number"].ToString();
 			ResponsePacket ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(data), ContentType = "text" };
 
 			return ret;
 		}
 
-		public static ResponsePacket AjaxGetResponder(Session session, Dictionary<string, string> parms)
+		public static ResponsePacket AjaxGetResponder(Session session, Dictionary<string, object> parms)
 		{
 			ResponsePacket ret = null;
 
 			if (parms.Count != 0)
 			{
-				string data = "You said " + parms["number"];
+				string data = "You said " + parms["number"].ToString();
 				ret = new ResponsePacket() { Data = Encoding.UTF8.GetBytes(data), ContentType = "text" };
 			}
 
