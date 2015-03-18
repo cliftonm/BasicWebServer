@@ -95,12 +95,15 @@ namespace Clifton.WebServer
 		/// <summary>
 		/// Starts the web server.
 		/// </summary>
-		public void Start(string websitePath, int port = 80)
+		public void Start(string websitePath, int port = 80, bool acquirePublicIP = false)
 		{
 			OnError.IfNull(() => Console.WriteLine("Warning - the onError callback has not been initialized by the application."));
 
-			// publicIP = GetExternalIP();
-			// Console.WriteLine("public IP: " + publicIP);
+			if (acquirePublicIP)
+			{
+				publicIP = GetExternalIP();
+				Console.WriteLine("public IP: " + publicIP);
+			}
 
 			router.WebsitePath = websitePath;
 			List<IPAddress> localHostIPs = GetLocalHostIPs();
@@ -128,8 +131,16 @@ namespace Clifton.WebServer
 		{
 			HttpListener listener = new HttpListener();
 			string url = UrlWithPort("http://localhost", port);
-			Console.WriteLine("Listening on " + url);
-			listener.Prefixes.Add(url);
+
+			try
+			{
+				listener.Prefixes.Add(url);
+				Console.WriteLine("Listening on " + url);
+			}
+			catch
+			{
+				// Ignore exception, which will occur on AWS servers.
+			}
 
 			// Listen to IP address as well.
 			localhostIPs.ForEach(ip =>
